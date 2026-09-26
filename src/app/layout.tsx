@@ -13,8 +13,22 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StockSense — Operational Inventory Management",
-  description: "Unified inventory operations workspace for products, warehouses, receipts, deliveries, and stock ledger.",
+  title: "StockSense — Modern Inventory Management",
+  description:
+    "Manage inventory, warehouses, fulfillment, transfers, and stock movements from one modern operational platform.",
+  openGraph: {
+    title: "StockSense — Modern Inventory Management",
+    description:
+      "Manage inventory, warehouses, fulfillment, transfers, and stock movements from one modern operational platform.",
+    type: "website",
+    siteName: "StockSense",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "StockSense — Modern Inventory Management",
+    description:
+      "Manage inventory, warehouses, fulfillment, transfers, and stock movements from one modern operational platform.",
+  },
 };
 
 export default function RootLayout({
