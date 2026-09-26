@@ -5,24 +5,39 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Seeding StockSense database...");
 
-  // 1. Users
+  // 1. Users with hashed passwords (Default password: StockSense123!)
+  const defaultPasswordHash = "$2a$10$WqU2j1QO3H2sW3UoI6Gq5eB3G.K/cT/9605uDq47l18Z49lq5O/w2"; // bcrypt hash of "StockSense123!"
+
+  const admin = await prisma.user.upsert({
+    where: { email: "admin@stocksense.io" },
+    update: { passwordHash: defaultPasswordHash },
+    create: {
+      name: "StockSense Admin",
+      email: "admin@stocksense.io",
+      role: UserRole.ADMIN,
+      passwordHash: defaultPasswordHash,
+    },
+  });
+
   const manager = await prisma.user.upsert({
     where: { email: "manager@stocksense.io" },
-    update: {},
+    update: { passwordHash: defaultPasswordHash },
     create: {
       name: "John Manager",
       email: "manager@stocksense.io",
       role: UserRole.INVENTORY_MANAGER,
+      passwordHash: defaultPasswordHash,
     },
   });
 
   const staff = await prisma.user.upsert({
     where: { email: "staff@stocksense.io" },
-    update: {},
+    update: { passwordHash: defaultPasswordHash },
     create: {
       name: "Alex Warehouse",
       email: "staff@stocksense.io",
       role: UserRole.WAREHOUSE_STAFF,
+      passwordHash: defaultPasswordHash,
     },
   });
 

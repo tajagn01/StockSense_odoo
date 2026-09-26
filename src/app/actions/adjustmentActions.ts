@@ -2,27 +2,38 @@
 
 import { prisma } from "@/lib/prisma";
 import { AdjustmentReason } from "@prisma/client";
+import { getCurrentUser } from "@/lib/auth";
+import { generateDocumentNumber } from "@/lib/documentNumber";
+import { notifyManagersAndAdmin } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 
 export async function createAdjustmentAction(formData: FormData) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Authentication required to perform stock adjustments." };
+    }
+
     const productId = formData.get("productId") as string;
     const locationId = formData.get("locationId") as string;
     const physicalQuantity = parseInt((formData.get("physicalQuantity") as string) || "0", 10);
     const reason = (formData.get("reason") as AdjustmentReason) || AdjustmentReason.COUNTING_ERROR;
     const notes = (formData.get("notes") as string) || null;
 
-    if (!productId || !locationId || physicalQuantity < 0) {
-      return { success: false, error: "Please enter valid adjustment details (physical quantity cannot be negative)." };
+    if (!productId || !locationId) {
+      return { success: false, error: "Please specify product and warehouse location." };
     }
 
-    const defaultUser = await prisma.user.findFirst();
-    if (!defaultUser) throw new Error("No default user found.");
+    if (isNaN(physicalQuantity) || physicalQuantity < 0) {
+      return { success: false, error: "Physical quantity cannot be negative." };
+    }
 
     const location = await prisma.location.findUnique({
       where: { id: locationId },
     });
-    if (!location) throw new Error("Invalid location.");
+    if (!location) throw new Error("Invalid location specified.");
+
+    const adjustmentNo = await generateDocumentNumber("ADJ");
 
     // Atomic reconciliation transaction
     await prisma.$transaction(async (tx) => {
@@ -56,10 +67,6 @@ export async function createAdjustmentAction(formData: FormData) {
         },
       });
 
-      // Generate adjustment number
-      const count = await tx.stockAdjustment.count();
-      const adjustmentNo = `ADJ-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
-
       // Create StockAdjustment record
       await tx.stockAdjustment.create({
         data: {
@@ -72,7 +79,7 @@ export async function createAdjustmentAction(formData: FormData) {
           difference,
           reason,
           notes,
-          createdById: defaultUser.id,
+          createdById: user.id,
         },
       });
 
@@ -88,15 +95,15 @@ export async function createAdjustmentAction(formData: FormData) {
           afterQuantity: physicalQuantity,
           referenceType: "ADJUSTMENT",
           referenceId: adjustmentNo,
-          reason: `Physical count reconciliation [${reason}]: ${notes || "No notes"}`,
-          userId: defaultUser.id,
+          reason: `Physical count reconciliation [${reason}]: ${notes || "Cycle count update"}`,
+          userId: user.id,
         },
       });
 
       // Audit log
       await tx.auditLog.create({
         data: {
-          userId: defaultUser.id,
+          userId: user.id,
           action: "STOCK_ADJUSTMENT",
           entity: "StockAdjustment",
           entityId: adjustmentNo,
@@ -105,12 +112,18 @@ export async function createAdjustmentAction(formData: FormData) {
       });
     });
 
+    await notifyManagersAndAdmin({
+      title: "Stock Adjustment Reconciled",
+      message: `Adjustment ${adjustmentNo} performed by ${user.name}.`,
+      type: "STOCK_ADJUSTED",
+    });
+
     revalidatePath("/operations/adjustments");
     revalidatePath("/products");
     revalidatePath("/dashboard");
     revalidatePath("/operations/move-history");
 
-    return { success: true };
+    return { success: true, adjustmentNo };
   } catch (error: any) {
     console.error("Adjustment failed:", error);
     return { success: false, error: error.message || "Failed to process stock adjustment." };

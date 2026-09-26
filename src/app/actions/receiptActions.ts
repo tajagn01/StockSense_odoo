@@ -1,10 +1,18 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { generateDocumentNumber } from "@/lib/documentNumber";
+import { notifyManagersAndAdmin } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 
 export async function createReceiptAction(formData: FormData) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Authentication required to create receipts." };
+    }
+
     const supplierId = formData.get("supplierId") as string;
     const warehouseId = formData.get("warehouseId") as string;
     const locationId = formData.get("locationId") as string;
@@ -16,12 +24,7 @@ export async function createReceiptAction(formData: FormData) {
       return { success: false, error: "Please enter valid receipt details and quantity > 0." };
     }
 
-    const defaultUser = await prisma.user.findFirst();
-    if (!defaultUser) throw new Error("No default user found.");
-
-    // Generate unique receipt number
-    const count = await prisma.receipt.count();
-    const receiptNo = `REC-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+    const receiptNo = await generateDocumentNumber("REC");
 
     await prisma.receipt.create({
       data: {
@@ -30,7 +33,7 @@ export async function createReceiptAction(formData: FormData) {
         warehouseId,
         status: "READY",
         notes,
-        createdById: defaultUser.id,
+        createdById: user.id,
         items: {
           create: [
             {
@@ -45,7 +48,7 @@ export async function createReceiptAction(formData: FormData) {
 
     revalidatePath("/operations/receipts");
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, receiptNo };
   } catch (error: any) {
     console.error("Create receipt failed:", error);
     return { success: false, error: error.message || "Failed to create receipt." };
@@ -54,17 +57,19 @@ export async function createReceiptAction(formData: FormData) {
 
 export async function validateReceiptAction(receiptId: string) {
   try {
-    const defaultUser = await prisma.user.findFirst();
-    if (!defaultUser) throw new Error("No default user found.");
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Authentication required to validate receipts." };
+    }
 
     // Execute atomic transaction for inventory & ledger
-    await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const receipt = await tx.receipt.findUnique({
         where: { id: receiptId },
         include: { items: { include: { product: true } } },
       });
 
-      if (!receipt) throw new Error("Receipt not found.");
+      if (!receipt) throw new Error("Receipt document not found.");
       if (receipt.status === "DONE") throw new Error("Receipt has already been validated.");
 
       // For each item, update inventory and add to ledger
@@ -112,7 +117,7 @@ export async function validateReceiptAction(receiptId: string) {
             referenceType: "RECEIPT",
             referenceId: receipt.receiptNo,
             reason: `Inward receipt validation from supplier (${receipt.receiptNo})`,
-            userId: defaultUser.id,
+            userId: user.id,
           },
         });
       }
@@ -126,13 +131,21 @@ export async function validateReceiptAction(receiptId: string) {
       // Add audit log
       await tx.auditLog.create({
         data: {
-          userId: defaultUser.id,
+          userId: user.id,
           action: "VALIDATE_RECEIPT",
           entity: "Receipt",
           entityId: receipt.id,
           metadata: { receiptNo: receipt.receiptNo, itemsCount: receipt.items.length },
         },
       });
+
+      return receipt;
+    });
+
+    await notifyManagersAndAdmin({
+      title: "Inward Receipt Validated",
+      message: `Receipt ${result.receiptNo} successfully validated by ${user.name}.`,
+      type: "RECEIPT_VALIDATED",
     });
 
     revalidatePath("/operations/receipts");

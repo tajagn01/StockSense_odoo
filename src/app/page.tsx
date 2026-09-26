@@ -6,10 +6,7 @@ import {
   ArrowLeftRight,
   SlidersHorizontal,
   History,
-  Warehouse,
   ArrowRight,
-  TrendingDown,
-  CheckCircle2,
 } from "lucide-react";
 
 export default function Home() {
@@ -68,7 +65,7 @@ export default function Home() {
 
           <div className="flex items-center gap-3">
             <Link
-              href="/dashboard"
+              href="/login"
               className="text-xs font-semibold text-[#464B71] hover:text-[#168FB3] transition px-3 py-1.5"
             >
               Sign in

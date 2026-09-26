@@ -144,7 +144,12 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
                   return (
                     <tr key={product.id} className="hover:bg-[#F2F2ED]/60 transition">
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-[#464B71]">{product.name}</div>
+                        <Link
+                          href={`/products/${product.id}`}
+                          className="font-semibold text-[#464B71] hover:text-[#168FB3] hover:underline transition"
+                        >
+                          {product.name}
+                        </Link>
                         <div className="text-[11px] font-mono text-[#646981]">{product.sku}</div>
                       </td>
                       <td className="py-3 px-4 text-[#646981]">

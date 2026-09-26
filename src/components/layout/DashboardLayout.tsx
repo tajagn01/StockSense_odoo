@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/prisma";
-import { Sidebar } from "./Sidebar";
-import { Topbar } from "./Topbar";
+import { requireAuth } from "@/lib/auth";
+import { DashboardShell } from "./DashboardShell";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
 export async function DashboardLayout({ children }: DashboardLayoutProps) {
+  // Enforce authentication at dashboard root
+  const user = await requireAuth();
+
   let warehouses: Array<{ id: string; name: string; code: string }> = [];
   let pendingReceipts = 0;
   let pendingDeliveries = 0;
@@ -46,18 +49,16 @@ export async function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#F2F2ED] text-[#464B71]">
-      <Sidebar
-        stats={{
-          pendingReceipts,
-          pendingDeliveries,
-          lowStockCount,
-        }}
-      />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Topbar warehouses={warehouses} />
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto">{children}</main>
-      </div>
-    </div>
+    <DashboardShell
+      user={user}
+      warehouses={warehouses}
+      stats={{
+        pendingReceipts,
+        pendingDeliveries,
+        lowStockCount,
+      }}
+    >
+      {children}
+    </DashboardShell>
   );
 }

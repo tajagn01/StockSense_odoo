@@ -1,10 +1,18 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { generateDocumentNumber } from "@/lib/documentNumber";
+import { notifyManagersAndAdmin } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 
 export async function createTransferAction(formData: FormData) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Authentication required to create stock transfer." };
+    }
+
     const sourceLocationId = formData.get("sourceLocationId") as string;
     const destinationLocationId = formData.get("destinationLocationId") as string;
     const productId = formData.get("productId") as string;
@@ -19,9 +27,6 @@ export async function createTransferAction(formData: FormData) {
       return { success: false, error: "Source location and destination location cannot be identical." };
     }
 
-    const defaultUser = await prisma.user.findFirst();
-    if (!defaultUser) throw new Error("No default user found.");
-
     // Fetch warehouse IDs for locations
     const [srcLoc, destLoc] = await Promise.all([
       prisma.location.findUnique({ where: { id: sourceLocationId } }),
@@ -30,8 +35,7 @@ export async function createTransferAction(formData: FormData) {
 
     if (!srcLoc || !destLoc) throw new Error("Invalid location selected.");
 
-    const count = await prisma.transfer.count();
-    const transferNo = `TRF-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+    const transferNo = await generateDocumentNumber("TRF");
 
     await prisma.transfer.create({
       data: {
@@ -42,7 +46,7 @@ export async function createTransferAction(formData: FormData) {
         destinationLocationId: destLoc.id,
         status: "READY",
         notes,
-        createdById: defaultUser.id,
+        createdById: user.id,
         items: {
           create: [
             {
@@ -56,7 +60,7 @@ export async function createTransferAction(formData: FormData) {
 
     revalidatePath("/operations/transfers");
     revalidatePath("/dashboard");
-    return { success: true };
+    return { success: true, transferNo };
   } catch (error: any) {
     console.error("Create transfer failed:", error);
     return { success: false, error: error.message || "Failed to schedule transfer." };
@@ -65,20 +69,22 @@ export async function createTransferAction(formData: FormData) {
 
 export async function validateTransferAction(transferId: string) {
   try {
-    const defaultUser = await prisma.user.findFirst();
-    if (!defaultUser) throw new Error("No default user found.");
+    const user = await getCurrentUser();
+    if (!user) {
+      return { success: false, error: "Authentication required to validate transfer." };
+    }
 
-    await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const transfer = await tx.transfer.findUnique({
         where: { id: transferId },
         include: { items: { include: { product: true } } },
       });
 
-      if (!transfer) throw new Error("Transfer not found.");
+      if (!transfer) throw new Error("Transfer order not found.");
       if (transfer.status === "DONE") throw new Error("Transfer has already been completed.");
 
       for (const item of transfer.items) {
-        // 1. Check source inventory
+        // 1. Check source inventory inside transaction
         const srcInv = await tx.inventory.findUnique({
           where: {
             productId_locationId: {
@@ -96,6 +102,9 @@ export async function validateTransferAction(transferId: string) {
         }
 
         const srcAfter = srcAvailable - item.quantity;
+        if (srcAfter < 0) {
+          throw new Error("Validation prevented: source stock cannot drop below zero.");
+        }
 
         // Decrement source inventory
         await tx.inventory.update({
@@ -151,7 +160,7 @@ export async function validateTransferAction(transferId: string) {
             referenceType: "TRANSFER",
             referenceId: transfer.transferNo,
             reason: `Internal transfer out to ${transfer.destinationLocationId} (${transfer.transferNo})`,
-            userId: defaultUser.id,
+            userId: user.id,
           },
         });
 
@@ -168,7 +177,7 @@ export async function validateTransferAction(transferId: string) {
             referenceType: "TRANSFER",
             referenceId: transfer.transferNo,
             reason: `Internal transfer in from ${transfer.sourceLocationId} (${transfer.transferNo})`,
-            userId: defaultUser.id,
+            userId: user.id,
           },
         });
       }
@@ -182,13 +191,21 @@ export async function validateTransferAction(transferId: string) {
       // Audit log
       await tx.auditLog.create({
         data: {
-          userId: defaultUser.id,
+          userId: user.id,
           action: "VALIDATE_TRANSFER",
           entity: "Transfer",
           entityId: transfer.id,
           metadata: { transferNo: transfer.transferNo },
         },
       });
+
+      return transfer;
+    });
+
+    await notifyManagersAndAdmin({
+      title: "Stock Transfer Completed",
+      message: `Internal transfer ${result.transferNo} executed by ${user.name}.`,
+      type: "TRANSFER_COMPLETED",
     });
 
     revalidatePath("/operations/transfers");
