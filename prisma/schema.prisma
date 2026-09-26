@@ -410,3 +410,26 @@ model OtpToken {
   @@index([email])
   @@index([expiresAt])
 }
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  email     String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
+}
+
+model DocumentSequence {
+  id         String   @id @default(cuid())
+  prefix     String
+  year       Int
+  nextNumber Int      @default(1)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([prefix, year])
+  @@index([prefix, year])
+}
+

@@ -4,6 +4,10 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { UserRole } from "@prisma/client";
 
+if (!process.env.AUTH_SECRET) {
+  throw new Error("FATAL CONFIGURATION ERROR: AUTH_SECRET environment variable is missing. StockSense requires a configured AUTH_SECRET.");
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
@@ -65,5 +69,5 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.AUTH_SECRET || "stocksense-super-secure-production-ready-auth-secret-key-2026",
+  secret: process.env.AUTH_SECRET,
 });

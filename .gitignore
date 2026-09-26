@@ -38,3 +38,7 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Next.js auto-generated agent guidelines
+AGENTS.md
+CLAUDE.md

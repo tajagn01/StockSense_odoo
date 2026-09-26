@@ -1,39 +1,51 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
+import { canCreateTransfer, canValidateTransfer, assertPermission } from "@/lib/permissions";
 import { generateDocumentNumber } from "@/lib/documentNumber";
 import { notifyManagersAndAdmin } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 
 export async function createTransferAction(formData: FormData) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return { success: false, error: "Authentication required to create stock transfer." };
-    }
+    const user = await requireAuth();
+    assertPermission(user.role, canCreateTransfer, "create internal stock transfers");
 
     const sourceLocationId = formData.get("sourceLocationId") as string;
     const destinationLocationId = formData.get("destinationLocationId") as string;
     const productId = formData.get("productId") as string;
-    const quantity = parseInt((formData.get("quantity") as string) || "1", 10);
-    const notes = (formData.get("notes") as string) || null;
+    const quantityRaw = parseInt((formData.get("quantity") as string) || "0", 10);
+    const notes = (formData.get("notes") as string)?.trim() || null;
 
-    if (!sourceLocationId || !destinationLocationId || !productId || quantity <= 0) {
-      return { success: false, error: "Please provide valid transfer locations, product, and quantity > 0." };
+    if (!sourceLocationId || !destinationLocationId || !productId) {
+      return { success: false, error: "Source location, destination location, and product are required." };
+    }
+
+    if (isNaN(quantityRaw) || quantityRaw <= 0) {
+      return { success: false, error: "Transfer quantity must be a positive integer greater than zero." };
     }
 
     if (sourceLocationId === destinationLocationId) {
       return { success: false, error: "Source location and destination location cannot be identical." };
     }
 
-    // Fetch warehouse IDs for locations
-    const [srcLoc, destLoc] = await Promise.all([
-      prisma.location.findUnique({ where: { id: sourceLocationId } }),
-      prisma.location.findUnique({ where: { id: destinationLocationId } }),
+    // Validate existence and warehouse relationships
+    const [srcLoc, destLoc, product] = await Promise.all([
+      prisma.location.findUnique({ where: { id: sourceLocationId }, include: { warehouse: true } }),
+      prisma.location.findUnique({ where: { id: destinationLocationId }, include: { warehouse: true } }),
+      prisma.product.findUnique({ where: { id: productId } }),
     ]);
 
-    if (!srcLoc || !destLoc) throw new Error("Invalid location selected.");
+    if (!srcLoc || !srcLoc.warehouse?.isActive) {
+      return { success: false, error: "Source location is invalid or belongs to an inactive warehouse." };
+    }
+    if (!destLoc || !destLoc.warehouse?.isActive) {
+      return { success: false, error: "Destination location is invalid or belongs to an inactive warehouse." };
+    }
+    if (!product || !product.isActive) {
+      return { success: false, error: "Selected product is invalid or inactive." };
+    }
 
     const transferNo = await generateDocumentNumber("TRF");
 
@@ -51,7 +63,7 @@ export async function createTransferAction(formData: FormData) {
           create: [
             {
               productId,
-              quantity,
+              quantity: quantityRaw,
             },
           ],
         },
@@ -69,10 +81,10 @@ export async function createTransferAction(formData: FormData) {
 
 export async function validateTransferAction(transferId: string) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return { success: false, error: "Authentication required to validate transfer." };
-    }
+    const user = await requireAuth();
+    assertPermission(user.role, canValidateTransfer, "validate and execute internal transfers");
+
+    if (!transferId) return { success: false, error: "Transfer ID is required." };
 
     const result = await prisma.$transaction(async (tx) => {
       const transfer = await tx.transfer.findUnique({
@@ -81,44 +93,59 @@ export async function validateTransferAction(transferId: string) {
       });
 
       if (!transfer) throw new Error("Transfer order not found.");
-      if (transfer.status === "DONE") throw new Error("Transfer has already been completed.");
+
+      // 1. Concurrency-safe atomic state check & transition: prevent double transfer
+      const updatedTransfer = await tx.transfer.updateMany({
+        where: { id: transferId, status: "READY" },
+        data: { status: "DONE" },
+      });
+
+      if (updatedTransfer.count === 0) {
+        throw new Error("Transfer has already been completed or is not in READY status.");
+      }
 
       for (const item of transfer.items) {
-        // 1. Check source inventory inside transaction
-        const srcInv = await tx.inventory.findUnique({
+        // 2. Atomic conditional decrement at source: prevents race condition / negative stock
+        const srcUpdate = await tx.inventory.updateMany({
           where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: transfer.sourceLocationId,
-            },
+            productId: item.productId,
+            locationId: transfer.sourceLocationId,
+            quantity: { gte: item.quantity },
+          },
+          data: {
+            quantity: { decrement: item.quantity },
           },
         });
 
-        const srcAvailable = srcInv ? srcInv.quantity : 0;
-        if (srcAvailable < item.quantity) {
+        if (srcUpdate.count === 0) {
+          const srcInv = await tx.inventory.findUnique({
+            where: {
+              productId_locationId: {
+                productId: item.productId,
+                locationId: transfer.sourceLocationId,
+              },
+            },
+          });
+          const available = srcInv ? srcInv.quantity : 0;
           throw new Error(
-            `Insufficient stock at source location for '${item.product.name}'. Required: ${item.quantity}, Available: ${srcAvailable}.`
+            `Insufficient stock at source location for '${item.product.name}'. Required: ${item.quantity}, Available: ${available}.`
           );
         }
 
-        const srcAfter = srcAvailable - item.quantity;
-        if (srcAfter < 0) {
-          throw new Error("Validation prevented: source stock cannot drop below zero.");
-        }
-
-        // Decrement source inventory
-        await tx.inventory.update({
+        // Fetch post-decrement source quantity for ledger entry
+        const updatedSrcInv = await tx.inventory.findUnique({
           where: {
             productId_locationId: {
               productId: item.productId,
               locationId: transfer.sourceLocationId,
             },
           },
-          data: { quantity: srcAfter },
         });
+        const srcAfter = updatedSrcInv ? updatedSrcInv.quantity : 0;
+        const srcBefore = srcAfter + item.quantity;
 
-        // 2. Increment destination inventory
-        const destInv = await tx.inventory.findUnique({
+        // 3. Atomic increment at destination location
+        const destInvBefore = await tx.inventory.findUnique({
           where: {
             productId_locationId: {
               productId: item.productId,
@@ -126,8 +153,7 @@ export async function validateTransferAction(transferId: string) {
             },
           },
         });
-
-        const destBefore = destInv ? destInv.quantity : 0;
+        const destBefore = destInvBefore ? destInvBefore.quantity : 0;
         const destAfter = destBefore + item.quantity;
 
         await tx.inventory.upsert({
@@ -137,17 +163,18 @@ export async function validateTransferAction(transferId: string) {
               locationId: transfer.destinationLocationId,
             },
           },
-          update: { quantity: destAfter },
+          update: {
+            quantity: { increment: item.quantity },
+          },
           create: {
             productId: item.productId,
             locationId: transfer.destinationLocationId,
             warehouseId: transfer.destinationWarehouseId,
-            quantity: destAfter,
+            quantity: item.quantity,
           },
         });
 
-        // 3. Immutable StockLedger entries (Dual-entry transfer)
-        // Source Out
+        // 4. Record dual StockLedger entries (source decrement + destination increment)
         await tx.stockLedger.create({
           data: {
             productId: item.productId,
@@ -155,16 +182,15 @@ export async function validateTransferAction(transferId: string) {
             locationId: transfer.sourceLocationId,
             movementType: "TRANSFER_OUT",
             quantity: -item.quantity,
-            beforeQuantity: srcAvailable,
+            beforeQuantity: srcBefore,
             afterQuantity: srcAfter,
             referenceType: "TRANSFER",
             referenceId: transfer.transferNo,
-            reason: `Internal transfer out to ${transfer.destinationLocationId} (${transfer.transferNo})`,
+            reason: `Transfer outward to ${transfer.destinationLocationId} (${transfer.transferNo})`,
             userId: user.id,
           },
         });
 
-        // Destination In
         await tx.stockLedger.create({
           data: {
             productId: item.productId,
@@ -176,26 +202,25 @@ export async function validateTransferAction(transferId: string) {
             afterQuantity: destAfter,
             referenceType: "TRANSFER",
             referenceId: transfer.transferNo,
-            reason: `Internal transfer in from ${transfer.sourceLocationId} (${transfer.transferNo})`,
+            reason: `Transfer inward from ${transfer.sourceLocationId} (${transfer.transferNo})`,
             userId: user.id,
           },
         });
       }
 
-      // Mark transfer DONE
-      await tx.transfer.update({
-        where: { id: transferId },
-        data: { status: "DONE" },
-      });
-
-      // Audit log
+      // 5. Audit log
       await tx.auditLog.create({
         data: {
           userId: user.id,
           action: "VALIDATE_TRANSFER",
           entity: "Transfer",
           entityId: transfer.id,
-          metadata: { transferNo: transfer.transferNo },
+          metadata: {
+            transferNo: transfer.transferNo,
+            sourceWarehouseId: transfer.sourceWarehouseId,
+            destinationWarehouseId: transfer.destinationWarehouseId,
+            itemsCount: transfer.items.length,
+          },
         },
       });
 
@@ -204,7 +229,7 @@ export async function validateTransferAction(transferId: string) {
 
     await notifyManagersAndAdmin({
       title: "Stock Transfer Completed",
-      message: `Internal transfer ${result.transferNo} executed by ${user.name}.`,
+      message: `Transfer ${result.transferNo} executed by ${user.name}.`,
       type: "TRANSFER_COMPLETED",
     });
 

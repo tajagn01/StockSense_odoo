@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
 
 export interface SearchResult {
   id: string;
@@ -11,13 +12,19 @@ export interface SearchResult {
 }
 
 export async function searchWorkspaceAction(query: string): Promise<SearchResult[]> {
+  // Enforce session authentication on global operational search
+  const user = await getCurrentUser();
+  if (!user) {
+    return [];
+  }
+
   const q = query.trim();
   if (!q || q.length < 2) return [];
 
   const results: SearchResult[] = [];
 
   try {
-    const [products, receipts, deliveries, transfers, warehouses] = await Promise.all([
+    const [products, receipts, deliveries, transfers, warehouses, locations] = await Promise.all([
       prisma.product.findMany({
         where: {
           OR: [
@@ -58,6 +65,21 @@ export async function searchWorkspaceAction(query: string): Promise<SearchResult
         },
         take: 3,
         select: { id: true, name: true, code: true },
+      }),
+      prisma.location.findMany({
+        where: {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { code: { contains: q, mode: "insensitive" } },
+          ],
+        },
+        take: 4,
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          warehouse: { select: { name: true, code: true } },
+        },
       }),
     ]);
 
@@ -107,6 +129,16 @@ export async function searchWorkspaceAction(query: string): Promise<SearchResult
         title: w.name,
         subtitle: `Facility Code: ${w.code}`,
         type: "Warehouse",
+        url: `/settings/warehouses`,
+      });
+    });
+
+    locations.forEach((l) => {
+      results.push({
+        id: l.id,
+        title: l.name,
+        subtitle: `Location: ${l.code} • In: ${l.warehouse.name} (${l.warehouse.code})`,
+        type: "Location",
         url: `/settings/warehouses`,
       });
     });

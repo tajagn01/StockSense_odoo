@@ -2,42 +2,50 @@
 
 import { prisma } from "@/lib/prisma";
 import { AdjustmentReason } from "@prisma/client";
-import { getCurrentUser } from "@/lib/auth";
+import { requireAuth } from "@/lib/auth";
+import { canAdjustStock, assertPermission } from "@/lib/permissions";
 import { generateDocumentNumber } from "@/lib/documentNumber";
 import { notifyManagersAndAdmin } from "@/lib/notifications";
 import { revalidatePath } from "next/cache";
 
 export async function createAdjustmentAction(formData: FormData) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return { success: false, error: "Authentication required to perform stock adjustments." };
-    }
+    const user = await requireAuth();
+    assertPermission(user.role, canAdjustStock, "perform inventory adjustments");
 
     const productId = formData.get("productId") as string;
     const locationId = formData.get("locationId") as string;
-    const physicalQuantity = parseInt((formData.get("physicalQuantity") as string) || "0", 10);
+    const physicalQuantityRaw = parseInt((formData.get("physicalQuantity") as string) || "0", 10);
     const reason = (formData.get("reason") as AdjustmentReason) || AdjustmentReason.COUNTING_ERROR;
-    const notes = (formData.get("notes") as string) || null;
+    const notes = (formData.get("notes") as string)?.trim() || null;
 
     if (!productId || !locationId) {
       return { success: false, error: "Please specify product and warehouse location." };
     }
 
-    if (isNaN(physicalQuantity) || physicalQuantity < 0) {
-      return { success: false, error: "Physical quantity cannot be negative." };
+    if (isNaN(physicalQuantityRaw) || physicalQuantityRaw < 0) {
+      return { success: false, error: "Physical counted quantity must be a non-negative integer (>= 0)." };
     }
 
-    const location = await prisma.location.findUnique({
-      where: { id: locationId },
-    });
-    if (!location) throw new Error("Invalid location specified.");
+    // Verify existence and validity of resources
+    const [product, location] = await Promise.all([
+      prisma.product.findUnique({ where: { id: productId } }),
+      prisma.location.findUnique({ where: { id: locationId }, include: { warehouse: true } }),
+    ]);
+
+    if (!product || !product.isActive) {
+      return { success: false, error: "Specified product is invalid or inactive." };
+    }
+
+    if (!location || !location.warehouse?.isActive) {
+      return { success: false, error: "Specified warehouse location is invalid or inactive." };
+    }
 
     const adjustmentNo = await generateDocumentNumber("ADJ");
 
-    // Atomic reconciliation transaction
+    // Atomic reconciliation transaction: inventory count, adjustment record, immutable ledger, and audit
     await prisma.$transaction(async (tx) => {
-      // Find current inventory
+      // Find current inventory snapshot within transaction
       const existingInv = await tx.inventory.findUnique({
         where: {
           productId_locationId: {
@@ -48,7 +56,7 @@ export async function createAdjustmentAction(formData: FormData) {
       });
 
       const systemQuantity = existingInv ? existingInv.quantity : 0;
-      const difference = physicalQuantity - systemQuantity;
+      const difference = physicalQuantityRaw - systemQuantity;
 
       // Update inventory table to match physical count
       await tx.inventory.upsert({
@@ -58,12 +66,12 @@ export async function createAdjustmentAction(formData: FormData) {
             locationId,
           },
         },
-        update: { quantity: physicalQuantity },
+        update: { quantity: physicalQuantityRaw },
         create: {
           productId,
           locationId,
           warehouseId: location.warehouseId,
-          quantity: physicalQuantity,
+          quantity: physicalQuantityRaw,
         },
       });
 
@@ -75,7 +83,7 @@ export async function createAdjustmentAction(formData: FormData) {
           warehouseId: location.warehouseId,
           locationId,
           systemQuantity,
-          physicalQuantity,
+          physicalQuantity: physicalQuantityRaw,
           difference,
           reason,
           notes,
@@ -92,7 +100,7 @@ export async function createAdjustmentAction(formData: FormData) {
           movementType: "ADJUSTMENT",
           quantity: difference,
           beforeQuantity: systemQuantity,
-          afterQuantity: physicalQuantity,
+          afterQuantity: physicalQuantityRaw,
           referenceType: "ADJUSTMENT",
           referenceId: adjustmentNo,
           reason: `Physical count reconciliation [${reason}]: ${notes || "Cycle count update"}`,
@@ -107,7 +115,7 @@ export async function createAdjustmentAction(formData: FormData) {
           action: "STOCK_ADJUSTMENT",
           entity: "StockAdjustment",
           entityId: adjustmentNo,
-          metadata: { systemQuantity, physicalQuantity, difference, reason },
+          metadata: { systemQuantity, physicalQuantity: physicalQuantityRaw, difference, reason },
         },
       });
     });

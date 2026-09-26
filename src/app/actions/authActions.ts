@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { UserRole } from "@prisma/client";
 import { signIn, signOut } from "@/auth";
 import { AuthError } from "next-auth";
@@ -71,14 +72,10 @@ export async function signupAction(formData: FormData) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // If first user, make ADMIN, otherwise check email pattern or default to WAREHOUSE_STAFF
+    // Security hardening: Public signup always defaults to WAREHOUSE_STAFF.
+    // Privileged roles (ADMIN, INVENTORY_MANAGER) must be provisioned via admin user management or seeded data.
     const userCount = await prisma.user.count();
-    let assignedRole: UserRole = UserRole.WAREHOUSE_STAFF;
-    if (userCount === 0 || email.includes("admin")) {
-      assignedRole = UserRole.ADMIN;
-    } else if (email.includes("manager")) {
-      assignedRole = UserRole.INVENTORY_MANAGER;
-    }
+    const assignedRole: UserRole = userCount === 0 ? UserRole.ADMIN : UserRole.WAREHOUSE_STAFF;
 
     const newUser = await prisma.user.create({
       data: {
@@ -102,7 +99,7 @@ export async function signupAction(formData: FormData) {
     return { success: true };
   } catch (error: any) {
     console.error("Signup failed:", error);
-    return { success: false, error: error.message || "Failed to create account." };
+    return { success: false, error: "Failed to create account. Please check inputs and try again." };
   }
 }
 
@@ -142,9 +139,20 @@ export async function forgotPasswordAction(formData: FormData) {
       };
     }
 
-    // Generate random 6-digit numeric OTP
-    const rawOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    const codeHash = await bcrypt.hash(rawOtp, 8);
+    // Invalidate any previously issued unused OTPs for this email
+    await prisma.otpToken.updateMany({
+      where: {
+        email,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    // Generate cryptographically random 6-digit numeric OTP
+    const rawOtp = crypto.randomInt(100000, 1000000).toString();
+    const codeHash = await bcrypt.hash(rawOtp, 10);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry
 
     await prisma.otpToken.create({
@@ -156,7 +164,10 @@ export async function forgotPasswordAction(formData: FormData) {
       },
     });
 
-    console.log(`[STOCKSENSE AUTH] Password reset OTP for ${email}: ${rawOtp}`);
+    // In development only: log the code for testing. Never log in production.
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[STOCKSENSE AUTH DEV ONLY] Password reset OTP for ${email}: ${rawOtp}`);
+    }
 
     return {
       success: true,
@@ -166,7 +177,7 @@ export async function forgotPasswordAction(formData: FormData) {
     };
   } catch (error: any) {
     console.error("Forgot password failed:", error);
-    return { success: false, error: error.message || "Failed to generate reset OTP." };
+    return { success: false, error: "Failed to generate reset OTP. Please try again." };
   }
 }
 
@@ -210,22 +221,43 @@ export async function verifyOtpAction(email: string, otp: string) {
       return { success: false, error: `Invalid code. ${4 - tokenRecord.attempts} attempts remaining.` };
     }
 
-    // Mark used
+    // Mark OTP as used
     await prisma.otpToken.update({
       where: { id: tokenRecord.id },
       data: { usedAt: new Date() },
     });
 
-    // Generate reset verification ticket (hash of record id + email)
-    const resetTicket = Buffer.from(`${tokenRecord.id}:${cleanEmail}:${Date.now()}`).toString("base64");
+    // Invalidate any previous unused password reset tokens for this email
+    await prisma.passwordResetToken.updateMany({
+      where: {
+        email: cleanEmail,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    // Generate a secure, opaque cryptographically random 256-bit reset token
+    const rawResetToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawResetToken).digest("hex");
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minute lifetime
+
+    await prisma.passwordResetToken.create({
+      data: {
+        email: cleanEmail,
+        tokenHash,
+        expiresAt,
+      },
+    });
 
     return {
       success: true,
-      resetTicket,
+      resetTicket: rawResetToken,
     };
   } catch (error: any) {
     console.error("Verify OTP failed:", error);
-    return { success: false, error: error.message || "Failed to verify code." };
+    return { success: false, error: "Failed to verify code. Please try again." };
   }
 }
 
@@ -248,41 +280,51 @@ export async function resetPasswordAction(formData: FormData) {
       return { success: false, error: "Passwords do not match." };
     }
 
-    // Verify reset ticket
-    const decoded = Buffer.from(resetTicket, "base64").toString("utf-8");
-    const [tokenId, ticketEmail, timestamp] = decoded.split(":");
+    // Cryptographic verification of server-issued reset token
+    const tokenHash = crypto.createHash("sha256").update(resetTicket.trim()).digest("hex");
 
-    if (ticketEmail !== email || Date.now() - parseInt(timestamp, 10) > 30 * 60 * 1000) {
-      return { success: false, error: "Reset session has expired. Please restart the forgot-password flow." };
-    }
-
-    // Verify token was actually marked used
-    const tokenRecord = await prisma.otpToken.findUnique({
-      where: { id: tokenId },
+    const resetRecord = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
     });
 
-    if (!tokenRecord || !tokenRecord.usedAt || tokenRecord.email !== email) {
-      return { success: false, error: "Invalid reset session." };
+    if (
+      !resetRecord ||
+      resetRecord.usedAt !== null ||
+      resetRecord.expiresAt < new Date() ||
+      resetRecord.email !== email
+    ) {
+      return {
+        success: false,
+        error: "Reset session has expired or is invalid. Please restart the password reset flow.",
+      };
     }
 
     // Hash new password
     const passwordHash = await bcrypt.hash(newPassword, 10);
 
-    // Update user
-    await prisma.user.update({
-      where: { email },
-      data: { passwordHash },
-    });
+    // Atomic update of user password and token invalidation
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { email },
+        data: { passwordHash },
+      });
 
-    // Cleanup all tokens for this email
-    await prisma.otpToken.deleteMany({
-      where: { email },
+      // Mark reset ticket used
+      await tx.passwordResetToken.update({
+        where: { id: resetRecord.id },
+        data: { usedAt: new Date() },
+      });
+
+      // Invalidate all tokens for this email
+      await tx.otpToken.deleteMany({
+        where: { email },
+      });
     });
 
     return { success: true };
   } catch (error: any) {
     console.error("Reset password failed:", error);
-    return { success: false, error: error.message || "Failed to reset password." };
+    return { success: false, error: "Failed to reset password. Please try again." };
   }
 }
 
