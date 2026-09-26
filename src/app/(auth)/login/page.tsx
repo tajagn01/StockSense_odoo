@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
-import { Boxes, Lock, Mail, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import { loginAction } from "@/app/actions/authActions";
+import { Boxes, Lock, Mail, ArrowRight, AlertCircle } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,29 +13,35 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      const res = await signIn("credentials", {
-        email: email.trim().toLowerCase(),
-        password,
-        redirect: false,
-      });
+      const formData = new FormData(e.currentTarget);
+      const res = await loginAction(formData);
 
-      if (res?.error) {
-        setError("Invalid email address or password. Please verify credentials.");
+      if (!res?.success) {
+        setError(res?.error || "Invalid email address or password. Please verify credentials.");
         setLoading(false);
       } else {
         router.push("/dashboard");
         router.refresh();
       }
     } catch (err: any) {
+      if (err?.digest?.startsWith("NEXT_REDIRECT")) {
+        return;
+      }
       setError(err?.message || "An unexpected error occurred during authentication.");
       setLoading(false);
     }
+  };
+
+  const setCredentials = (userEmail: string, userPass: string) => {
+    setEmail(userEmail);
+    setPassword(userPass);
+    setError(null);
   };
 
   return (
@@ -80,6 +86,7 @@ export default function LoginPage() {
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#646981]" />
               <input
                 type="email"
+                name="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -105,6 +112,7 @@ export default function LoginPage() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#646981]" />
               <input
                 type="password"
+                name="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -128,17 +136,26 @@ export default function LoginPage() {
         <div className="mt-6 pt-5 border-t border-[rgba(70,75,113,0.10)]">
           <p className="text-[11px] font-semibold text-[#464B71] mb-2">Demo Operator Accounts:</p>
           <div className="space-y-1.5 text-[10px] text-[#646981] bg-[#F2F2ED]/60 p-2.5 rounded-lg border border-[rgba(70,75,113,0.08)]">
-            <div className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]" onClick={() => { setEmail("admin@stocksense.io"); setPassword("StockSense123!"); }}>
+            <div
+              className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]"
+              onClick={() => setCredentials("admin@stocksense.io", "StockSense123!")}
+            >
               <span><strong className="text-[#464B71]">Admin:</strong> admin@stocksense.io</span>
-              <span className="font-mono text-[#168FB3]">Fill</span>
+              <span className="font-mono text-[#168FB3] font-bold">Fill</span>
             </div>
-            <div className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]" onClick={() => { setEmail("manager@stocksense.io"); setPassword("StockSense123!"); }}>
+            <div
+              className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]"
+              onClick={() => setCredentials("manager@stocksense.io", "StockSense123!")}
+            >
               <span><strong className="text-[#464B71]">Manager:</strong> manager@stocksense.io</span>
-              <span className="font-mono text-[#168FB3]">Fill</span>
+              <span className="font-mono text-[#168FB3] font-bold">Fill</span>
             </div>
-            <div className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]" onClick={() => { setEmail("staff@stocksense.io"); setPassword("StockSense123!"); }}>
+            <div
+              className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]"
+              onClick={() => setCredentials("staff@stocksense.io", "StockSense123!")}
+            >
               <span><strong className="text-[#464B71]">Staff:</strong> staff@stocksense.io</span>
-              <span className="font-mono text-[#168FB3]">Fill</span>
+              <span className="font-mono text-[#168FB3] font-bold">Fill</span>
             </div>
             <div className="text-[9px] text-[#646981] pt-1 border-t border-[rgba(70,75,113,0.06)]">
               Password for all demo accounts: <code className="bg-white px-1 py-0.5 rounded text-[#464B71]">StockSense123!</code>

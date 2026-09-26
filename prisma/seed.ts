@@ -1,4 +1,5 @@
 import { PrismaClient, UserRole, Status, MovementType, AdjustmentReason } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -6,7 +7,7 @@ async function main() {
   console.log("🌱 Seeding StockSense database...");
 
   // 1. Users with hashed passwords (Default password: StockSense123!)
-  const defaultPasswordHash = "$2a$10$WqU2j1QO3H2sW3UoI6Gq5eB3G.K/cT/9605uDq47l18Z49lq5O/w2"; // bcrypt hash of "StockSense123!"
+  const defaultPasswordHash = await bcrypt.hash("StockSense123!", 10);
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@stocksense.io" },

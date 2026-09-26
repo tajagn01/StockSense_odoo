@@ -3,7 +3,42 @@
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { UserRole } from "@prisma/client";
-import { signOut } from "@/auth";
+import { signIn, signOut } from "@/auth";
+import { AuthError } from "next-auth";
+
+export async function loginAction(formData: FormData) {
+  try {
+    const email = (formData.get("email") as string)?.trim().toLowerCase();
+    const password = formData.get("password") as string;
+
+    if (!email || !password) {
+      return { success: false, error: "Please enter your work email and password." };
+    }
+
+    await signIn("credentials", {
+      email,
+      password,
+      redirectTo: "/dashboard",
+    });
+
+    return { success: true };
+  } catch (error) {
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case "CredentialsSignin":
+          return { success: false, error: "Invalid email address or password. Please verify credentials." };
+        default:
+          return { success: false, error: "Authentication failed. Please check credentials." };
+      }
+    }
+    // Next.js redirect mechanism throws internal NEXT_REDIRECT error which must bubble up
+    if ((error as any)?.digest?.startsWith("NEXT_REDIRECT")) {
+      throw error;
+    }
+    console.error("Login action error:", error);
+    return { success: false, error: "Invalid email address or password. Please verify credentials." };
+  }
+}
 
 export async function signupAction(formData: FormData) {
   try {
