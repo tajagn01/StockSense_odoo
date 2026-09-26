@@ -14,10 +14,10 @@ export default async function WarehousesPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="pb-2 border-b border-slate-800">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Warehouses & Storage Locations</h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Configure distribution centers, aisles, and storage bins across multi-facility operations.
+      <div className="pb-2 border-b border-[rgba(70,75,113,0.12)]">
+        <h1 className="text-2xl font-bold tracking-tight text-[#464B71]">Warehouses & Locations</h1>
+        <p className="text-xs text-[#646981] mt-0.5">
+          Manage distribution hubs, aisles, and storage bins across multi-facility operations.
         </p>
       </div>
 

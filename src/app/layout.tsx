@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "StockSense — Real-Time Inventory Management System",
-  description: "Enterprise-grade real-time inventory control, stock ledger, multi-warehouse logistics, and physical inventory auditing.",
+  title: "StockSense — Operational Inventory Management",
+  description: "Unified inventory operations workspace for products, warehouses, receipts, deliveries, and stock ledger.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200">
+      <body className="min-h-full flex flex-col bg-[#F2F2ED] text-[#464B71] selection:bg-[#73D0C3]/30 selection:text-[#464B71]">
         {children}
       </body>
     </html>

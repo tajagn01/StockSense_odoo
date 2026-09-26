@@ -7,7 +7,6 @@ interface DashboardLayoutProps {
 }
 
 export async function DashboardLayout({ children }: DashboardLayoutProps) {
-  // Fetch high-level stats for sidebar badges and topbar warehouse list
   let warehouses: Array<{ id: string; name: string; code: string }> = [];
   let pendingReceipts = 0;
   let pendingDeliveries = 0;
@@ -37,7 +36,6 @@ export async function DashboardLayout({ children }: DashboardLayoutProps) {
     pendingReceipts = pReceipts;
     pendingDeliveries = pDeliveries;
 
-    // Count products whose total inventory <= reorderLevel
     lowStockCount = products.filter((p) => {
       const totalStock = p.inventory.reduce((acc, i) => acc + i.quantity, 0);
       const reorderLevel = p.reorderRules[0]?.reorderLevel ?? 20;
@@ -48,7 +46,7 @@ export async function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="flex min-h-screen bg-[#F2F2ED] text-[#464B71]">
       <Sidebar
         stats={{
           pendingReceipts,

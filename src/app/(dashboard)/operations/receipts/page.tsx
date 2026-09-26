@@ -21,10 +21,10 @@ export default async function ReceiptsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="pb-2 border-b border-slate-800">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Inward Receipts</h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Receive incoming vendor consignments, inspect line items, and validate atomic stock increments.
+      <div className="pb-2 border-b border-[rgba(70,75,113,0.12)]">
+        <h1 className="text-2xl font-bold tracking-tight text-[#464B71]">Inward Receipts</h1>
+        <p className="text-xs text-[#646981] mt-0.5">
+          Process incoming vendor shipments, verify item quantities, and validate immediate stock increments.
         </p>
       </div>
 

@@ -25,10 +25,10 @@ export default async function AdjustmentsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="pb-2 border-b border-slate-800">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Stock Adjustments</h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Perform cycle counting reconciliation, log reason codes, and update inventory with permanent ledger audit records.
+      <div className="pb-2 border-b border-[rgba(70,75,113,0.12)]">
+        <h1 className="text-2xl font-bold tracking-tight text-[#464B71]">Stock Adjustments</h1>
+        <p className="text-xs text-[#646981] mt-0.5">
+          Execute physical cycle counting, identify variance discrepancies, and record atomic balance updates with reason tracking.
         </p>
       </div>
 

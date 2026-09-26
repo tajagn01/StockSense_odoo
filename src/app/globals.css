@@ -1,26 +1,75 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --primary: #464B71;
+  --primary-hover: #373b5a;
+  --action: #168FB3;
+  --action-hover: #127492;
+  --accent: #73D0C3;
+  --accent-light: #e6f7f4;
+  --background: #F2F2ED;
+  --surface: #FFFFFF;
+  --foreground: #464B71;
+  --muted-foreground: #646981;
+  --border: rgba(70, 75, 113, 0.12);
+  --border-subtle: rgba(70, 75, 113, 0.08);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-primary: #464B71;
+  --color-primary-hover: #373b5a;
+  --color-action: #168FB3;
+  --color-action-hover: #127492;
+  --color-accent: #73D0C3;
+  --color-accent-light: #e6f7f4;
+  --color-background: #F2F2ED;
+  --color-surface: #FFFFFF;
+  --color-foreground: #464B71;
+  --color-muted-foreground: #646981;
+  --color-border: rgba(70, 75, 113, 0.12);
+  --color-border-subtle: rgba(70, 75, 113, 0.08);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #F2F2ED;
+  color: #464B71;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom utility styles for StockSense enterprise borders and cards */
+.ss-card {
+  background-color: #FFFFFF;
+  border: 1px solid rgba(70, 75, 113, 0.12);
+  border-radius: 0.75rem;
+}
+
+.ss-border {
+  border-color: rgba(70, 75, 113, 0.12);
+}
+
+.ss-border-subtle {
+  border-color: rgba(70, 75, 113, 0.08);
+}
+
+.ss-btn-primary {
+  background-color: #168FB3;
+  color: #FFFFFF;
+  transition: all 0.15s ease-in-out;
+}
+.ss-btn-primary:hover {
+  background-color: #127492;
+}
+
+.ss-btn-secondary {
+  background-color: #FFFFFF;
+  color: #464B71;
+  border: 1px solid rgba(70, 75, 113, 0.15);
+  transition: all 0.15s ease-in-out;
+}
+.ss-btn-secondary:hover {
+  background-color: #F2F2ED;
 }

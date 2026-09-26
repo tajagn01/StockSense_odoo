@@ -11,9 +11,6 @@ import {
   SlidersHorizontal,
   History,
   Warehouse,
-  ChevronRight,
-  ShieldCheck,
-  TrendingDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +38,7 @@ export function Sidebar({ stats }: SidebarProps) {
       icon: Boxes,
       active: pathname.startsWith("/products"),
       badge: stats?.lowStockCount ? `${stats.lowStockCount} low` : undefined,
-      badgeColor: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+      badgeColor: "bg-[#168FB3]/10 text-[#168FB3] border-[#168FB3]/20",
     },
   ];
 
@@ -52,7 +49,7 @@ export function Sidebar({ stats }: SidebarProps) {
       icon: ArrowDownToLine,
       active: pathname.startsWith("/operations/receipts"),
       badge: stats?.pendingReceipts ? `${stats.pendingReceipts}` : undefined,
-      badgeColor: "bg-blue-500/20 text-cyan-400 border-cyan-500/30",
+      badgeColor: "bg-[#168FB3]/10 text-[#168FB3] border-[#168FB3]/20",
     },
     {
       title: "Delivery Orders",
@@ -60,7 +57,7 @@ export function Sidebar({ stats }: SidebarProps) {
       icon: ArrowUpFromLine,
       active: pathname.startsWith("/operations/deliveries"),
       badge: stats?.pendingDeliveries ? `${stats.pendingDeliveries}` : undefined,
-      badgeColor: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+      badgeColor: "bg-[#73D0C3]/20 text-[#464B71] border-[#73D0C3]/40",
     },
     {
       title: "Internal Transfers",
@@ -92,20 +89,20 @@ export function Sidebar({ stats }: SidebarProps) {
   ];
 
   return (
-    <aside className="w-64 border-r border-slate-800 bg-slate-950/80 backdrop-blur-xl flex flex-col justify-between shrink-0 h-screen sticky top-0">
+    <aside className="w-64 border-r border-[rgba(70,75,113,0.12)] bg-[#FFFFFF] flex flex-col justify-between shrink-0 h-screen sticky top-0">
       <div className="flex flex-col flex-1 overflow-y-auto">
         {/* Brand / Logo */}
-        <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
+        <div className="p-5 border-b border-[rgba(70,75,113,0.12)] flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-              <Boxes className="h-5 w-5 text-white" />
+            <div className="h-8 w-8 rounded-lg bg-[#464B71] flex items-center justify-center text-white">
+              <Boxes className="h-4 w-4 text-[#73D0C3]" />
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
+              <span className="font-bold text-base tracking-tight text-[#464B71]">
                 StockSense
               </span>
-              <span className="text-[10px] text-slate-400 font-mono tracking-wider">
-                IMS Core v1.0
+              <span className="text-[10px] text-[#646981] font-medium tracking-wider">
+                Operations Workspace
               </span>
             </div>
           </Link>
@@ -115,7 +112,7 @@ export function Sidebar({ stats }: SidebarProps) {
         <div className="p-3 space-y-6">
           {/* Main */}
           <div>
-            <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#646981]">
               Overview
             </div>
             <nav className="space-y-1">
@@ -126,14 +123,14 @@ export function Sidebar({ stats }: SidebarProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all group",
+                      "flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all",
                       item.active
-                        ? "bg-indigo-600/15 text-indigo-400 border border-indigo-500/30"
-                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                        ? "bg-[#168FB3]/10 text-[#168FB3] font-semibold border-l-2 border-[#168FB3]"
+                        : "text-[#646981] hover:text-[#464B71] hover:bg-[#F2F2ED]"
                     )}
                   >
-                    <div className="flex items-center gap-3">
-                      <Icon className={cn("h-4 w-4", item.active ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-200")} />
+                    <div className="flex items-center gap-2.5">
+                      <Icon className={cn("h-4 w-4", item.active ? "text-[#168FB3]" : "text-[#646981]")} />
                       <span>{item.title}</span>
                     </div>
                     {item.badge && (
@@ -149,7 +146,7 @@ export function Sidebar({ stats }: SidebarProps) {
 
           {/* Operations */}
           <div>
-            <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#646981]">
               Operations
             </div>
             <nav className="space-y-1">
@@ -160,14 +157,14 @@ export function Sidebar({ stats }: SidebarProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all group",
+                      "flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all",
                       item.active
-                        ? "bg-indigo-600/15 text-indigo-400 border border-indigo-500/30"
-                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                        ? "bg-[#168FB3]/10 text-[#168FB3] font-semibold border-l-2 border-[#168FB3]"
+                        : "text-[#646981] hover:text-[#464B71] hover:bg-[#F2F2ED]"
                     )}
                   >
-                    <div className="flex items-center gap-3">
-                      <Icon className={cn("h-4 w-4", item.active ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-200")} />
+                    <div className="flex items-center gap-2.5">
+                      <Icon className={cn("h-4 w-4", item.active ? "text-[#168FB3]" : "text-[#646981]")} />
                       <span>{item.title}</span>
                     </div>
                     {item.badge && (
@@ -183,7 +180,7 @@ export function Sidebar({ stats }: SidebarProps) {
 
           {/* Configuration */}
           <div>
-            <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            <div className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#646981]">
               Settings
             </div>
             <nav className="space-y-1">
@@ -194,14 +191,14 @@ export function Sidebar({ stats }: SidebarProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all group",
+                      "flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all",
                       item.active
-                        ? "bg-indigo-600/15 text-indigo-400 border border-indigo-500/30"
-                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+                        ? "bg-[#168FB3]/10 text-[#168FB3] font-semibold border-l-2 border-[#168FB3]"
+                        : "text-[#646981] hover:text-[#464B71] hover:bg-[#F2F2ED]"
                     )}
                   >
-                    <div className="flex items-center gap-3">
-                      <Icon className={cn("h-4 w-4", item.active ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-200")} />
+                    <div className="flex items-center gap-2.5">
+                      <Icon className={cn("h-4 w-4", item.active ? "text-[#168FB3]" : "text-[#646981]")} />
                       <span>{item.title}</span>
                     </div>
                   </Link>
@@ -213,18 +210,18 @@ export function Sidebar({ stats }: SidebarProps) {
       </div>
 
       {/* User / Session Footer */}
-      <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
-        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/70 border border-slate-800">
+      <div className="p-3 border-t border-[rgba(70,75,113,0.12)] bg-[#FFFFFF]">
+        <div className="flex items-center justify-between p-2 rounded-lg bg-[#F2F2ED]/60 border border-[rgba(70,75,113,0.08)]">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-bold text-xs text-white shrink-0">
+            <div className="h-7 w-7 rounded bg-[#464B71] flex items-center justify-center font-bold text-xs text-white shrink-0">
               JM
             </div>
             <div className="flex flex-col truncate">
-              <span className="text-xs font-semibold text-white truncate">John Manager</span>
-              <span className="text-[10px] text-slate-400 truncate">Inventory Manager</span>
+              <span className="text-xs font-semibold text-[#464B71] truncate">John Manager</span>
+              <span className="text-[10px] text-[#646981] truncate">Inventory Staff</span>
             </div>
           </div>
-          <div className="h-2 w-2 rounded-full bg-emerald-400" title="Online" />
+          <div className="h-2 w-2 rounded-full bg-[#73D0C3]" title="Online" />
         </div>
       </div>
     </aside>

@@ -16,10 +16,10 @@ export default async function MoveHistoryPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="pb-2 border-b border-slate-800">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Stock Ledger & Move History</h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Immutable historical audit log tracking every inventory transaction, quantity alteration, and user action.
+      <div className="pb-2 border-b border-[rgba(70,75,113,0.12)]">
+        <h1 className="text-2xl font-bold tracking-tight text-[#464B71]">Stock Ledger</h1>
+        <p className="text-xs text-[#646981] mt-0.5">
+          Immutable historical audit log tracking every inventory transaction, quantity alteration, and user attribution.
         </p>
       </div>
 

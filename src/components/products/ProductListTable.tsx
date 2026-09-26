@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Filter, Layers, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown } from "lucide-react";
+import { Search, Filter, AlertTriangle, CheckCircle2, XCircle, ArrowUpDown, PackageOpen } from "lucide-react";
 import Link from "next/link";
 
 interface ProductItem {
@@ -24,10 +24,8 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [stockFilter, setStockFilter] = useState<"ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK">("ALL");
 
-  // Extract unique categories
   const categories = Array.from(new Set(products.map((p) => p.category.name)));
 
-  // Filter products
   const filteredProducts = products.filter((p) => {
     const totalQty = p.inventory.reduce((sum, item) => sum + item.quantity, 0);
     const reorderLevel = p.reorderRules[0]?.reorderLevel ?? 20;
@@ -49,24 +47,23 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
   return (
     <div className="space-y-4">
       {/* Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-slate-800 bg-slate-900/50">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-[rgba(70,75,113,0.12)] bg-[#FFFFFF]">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#646981]" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by product name or SKU..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-[#F2F2ED] border border-[rgba(70,75,113,0.12)] rounded-lg pl-9 pr-4 py-2 text-xs text-[#464B71] placeholder:text-[#646981] focus:outline-none focus:border-[#168FB3]"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Category filter */}
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none cursor-pointer"
+            className="bg-[#FFFFFF] border border-[rgba(70,75,113,0.12)] rounded-lg px-3 py-2 text-xs text-[#464B71] focus:outline-none cursor-pointer font-medium"
           >
             <option value="ALL">All Categories</option>
             {categories.map((cat) => (
@@ -76,11 +73,10 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
             ))}
           </select>
 
-          {/* Stock Level filter */}
           <select
             value={stockFilter}
             onChange={(e) => setStockFilter(e.target.value as any)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none cursor-pointer"
+            className="bg-[#FFFFFF] border border-[rgba(70,75,113,0.12)] rounded-lg px-3 py-2 text-xs text-[#464B71] focus:outline-none cursor-pointer font-medium"
           >
             <option value="ALL">All Stock Levels</option>
             <option value="IN_STOCK">Normal Stock</option>
@@ -90,27 +86,31 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
         </div>
       </div>
 
-      {/* Products Table */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+      {/* Table */}
+      <div className="rounded-xl border border-[rgba(70,75,113,0.12)] bg-[#FFFFFF] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-900/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+            <thead className="bg-[#F2F2ED] text-[11px] uppercase tracking-wider text-[#646981] border-b border-[rgba(70,75,113,0.10)]">
               <tr>
-                <th className="py-3.5 px-4 font-semibold">Product Name & Code</th>
-                <th className="py-3.5 px-4 font-semibold">Category</th>
-                <th className="py-3.5 px-4 font-semibold">Unit (UOM)</th>
-                <th className="py-3.5 px-4 font-semibold">Total Stock</th>
-                <th className="py-3.5 px-4 font-semibold">Warehouse / Location</th>
-                <th className="py-3.5 px-4 font-semibold">Reorder Level</th>
-                <th className="py-3.5 px-4 font-semibold">Status</th>
-                <th className="py-3.5 px-4 font-semibold text-right">Quick Action</th>
+                <th className="py-3 px-4 font-semibold">Product Name & SKU</th>
+                <th className="py-3 px-4 font-semibold">Category</th>
+                <th className="py-3 px-4 font-semibold">UOM</th>
+                <th className="py-3 px-4 font-semibold">Available Stock</th>
+                <th className="py-3 px-4 font-semibold">Warehouse / Location</th>
+                <th className="py-3 px-4 font-semibold">Reorder Threshold</th>
+                <th className="py-3 px-4 font-semibold">Status</th>
+                <th className="py-3 px-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-[rgba(70,75,113,0.08)]">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    No products matching your search criteria.
+                  <td colSpan={8} className="py-16 text-center">
+                    <div className="flex flex-col items-center justify-center text-[#646981]">
+                      <PackageOpen className="h-8 w-8 text-[#646981]/50 mb-2" />
+                      <p className="font-semibold text-sm text-[#464B71]">No products found</p>
+                      <p className="text-xs text-[#646981] mt-0.5">Try adjusting your filters or search terms.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -119,22 +119,22 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
                   const reorderLevel = product.reorderRules[0]?.reorderLevel ?? 20;
 
                   let statusBadge = (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <CheckCircle2 className="h-3 w-3" />
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#73D0C3]/20 text-[#464B71] border border-[#73D0C3]/40">
+                      <CheckCircle2 className="h-3 w-3 text-[#168FB3]" />
                       In Stock
                     </span>
                   );
 
                   if (totalStock === 0) {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
                         <XCircle className="h-3 w-3" />
                         Out of Stock
                       </span>
                     );
                   } else if (totalStock <= reorderLevel) {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                         <AlertTriangle className="h-3 w-3" />
                         Low Stock
                       </span>
@@ -142,50 +142,50 @@ export function ProductListTable({ products }: { products: ProductItem[] }) {
                   }
 
                   return (
-                    <tr key={product.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-white">{product.name}</div>
-                        <div className="text-[11px] font-mono text-indigo-400">{product.sku}</div>
+                    <tr key={product.id} className="hover:bg-[#F2F2ED]/60 transition">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-[#464B71]">{product.name}</div>
+                        <div className="text-[11px] font-mono text-[#646981]">{product.sku}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-[11px] text-slate-300 border border-slate-700">
+                      <td className="py-3 px-4 text-[#646981]">
+                        <span className="px-2 py-0.5 rounded bg-[#F2F2ED] text-[11px] text-[#464B71] border border-[rgba(70,75,113,0.08)]">
                           {product.category.name}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300 font-mono">{product.uom}</td>
-                      <td className="py-3.5 px-4">
-                        <span className="text-sm font-bold text-white">{totalStock}</span>{" "}
-                        <span className="text-[10px] text-slate-400">{product.uom}</span>
+                      <td className="py-3 px-4 text-[#464B71] font-mono">{product.uom}</td>
+                      <td className="py-3 px-4">
+                        <span className="text-sm font-bold text-[#464B71]">{totalStock}</span>{" "}
+                        <span className="text-[10px] text-[#646981]">{product.uom}</span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300">
+                      <td className="py-3 px-4 text-[#646981]">
                         {product.inventory.length === 0 ? (
-                          <span className="text-slate-500">Unassigned</span>
+                          <span className="text-[#646981]/60">Unassigned</span>
                         ) : (
                           <div className="space-y-0.5">
                             {product.inventory.map((inv, i) => (
-                              <div key={i} className="text-[11px] text-slate-300">
+                              <div key={i} className="text-[11px] text-[#464B71]">
                                 {inv.warehouse.code} / {inv.location.name}:{" "}
-                                <span className="font-semibold text-white">{inv.quantity}</span>
+                                <span className="font-bold">{inv.quantity}</span>
                               </div>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-400 font-mono">
+                      <td className="py-3 px-4 text-[#646981] font-mono">
                         {reorderLevel} {product.uom}
                       </td>
-                      <td className="py-3.5 px-4">{statusBadge}</td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="py-3 px-4">{statusBadge}</td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Link
                             href="/operations/receipts"
-                            className="px-2.5 py-1 text-[11px] font-medium rounded bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/30 transition"
+                            className="px-2.5 py-1 text-[11px] font-semibold rounded bg-[#168FB3]/10 text-[#168FB3] hover:bg-[#168FB3]/20 transition"
                           >
                             Receive
                           </Link>
                           <Link
                             href="/operations/adjustments"
-                            className="px-2.5 py-1 text-[11px] font-medium rounded bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition"
+                            className="px-2.5 py-1 text-[11px] font-medium rounded bg-[#F2F2ED] text-[#464B71] hover:bg-[#F2F2ED]/80 border border-[rgba(70,75,113,0.12)] transition"
                           >
                             Count
                           </Link>

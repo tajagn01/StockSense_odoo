@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Filter, History, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Download } from "lucide-react";
+import { Search, History, Download, FileSpreadsheet } from "lucide-react";
 
 interface LedgerClientViewProps {
   entries: any[];
@@ -68,15 +68,15 @@ export function LedgerClientView({ entries }: LedgerClientViewProps) {
   return (
     <div className="space-y-4">
       {/* Search & Type Filter Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-slate-800 bg-slate-900/50">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl border border-[rgba(70,75,113,0.12)] bg-[#FFFFFF]">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#646981]" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by product, SKU, reference #, reason..."
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-[#F2F2ED] border border-[rgba(70,75,113,0.12)] rounded-lg pl-9 pr-4 py-2 text-xs text-[#464B71] placeholder:text-[#646981] focus:outline-none focus:border-[#168FB3]"
           />
         </div>
 
@@ -84,11 +84,11 @@ export function LedgerClientView({ entries }: LedgerClientViewProps) {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none cursor-pointer"
+            className="bg-[#FFFFFF] border border-[rgba(70,75,113,0.12)] rounded-lg px-3 py-2 text-xs text-[#464B71] focus:outline-none cursor-pointer font-medium"
           >
             <option value="ALL">All Movement Types</option>
-            <option value="RECEIPT">Receipts (Inward)</option>
-            <option value="DELIVERY">Deliveries (Outward)</option>
+            <option value="RECEIPT">Inward Receipts</option>
+            <option value="DELIVERY">Outward Deliveries</option>
             <option value="TRANSFER_IN">Transfer In</option>
             <option value="TRANSFER_OUT">Transfer Out</option>
             <option value="ADJUSTMENT">Adjustments</option>
@@ -96,43 +96,47 @@ export function LedgerClientView({ entries }: LedgerClientViewProps) {
 
           <button
             onClick={exportCSV}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#FFFFFF] hover:bg-[#F2F2ED] text-[#464B71] border border-[rgba(70,75,113,0.15)] shadow-sm transition"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-3.5 w-3.5 text-[#168FB3]" />
             <span>Export CSV</span>
           </button>
         </div>
       </div>
 
       {/* Ledger Table */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+      <div className="rounded-xl border border-[rgba(70,75,113,0.12)] bg-[#FFFFFF] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-900/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+            <thead className="bg-[#F2F2ED] text-[11px] uppercase tracking-wider text-[#646981] border-b border-[rgba(70,75,113,0.10)]">
               <tr>
-                <th className="py-3.5 px-4 font-semibold">Date & Time</th>
-                <th className="py-3.5 px-4 font-semibold">Movement Type</th>
-                <th className="py-3.5 px-4 font-semibold">Product & SKU</th>
-                <th className="py-3.5 px-4 font-semibold">Storage Location</th>
-                <th className="py-3.5 px-4 font-semibold">Stock Progression</th>
-                <th className="py-3.5 px-4 font-semibold">Reference Document</th>
-                <th className="py-3.5 px-4 font-semibold">Reason & Audit Trail</th>
-                <th className="py-3.5 px-4 font-semibold text-right">Performed By</th>
+                <th className="py-3 px-4 font-semibold">Timestamp</th>
+                <th className="py-3 px-4 font-semibold">Type</th>
+                <th className="py-3 px-4 font-semibold">Product & SKU</th>
+                <th className="py-3 px-4 font-semibold">Storage Location</th>
+                <th className="py-3 px-4 font-semibold">Stock Progression</th>
+                <th className="py-3 px-4 font-semibold">Reference Document</th>
+                <th className="py-3 px-4 font-semibold">Audit Trail & Reason</th>
+                <th className="py-3 px-4 font-semibold text-right">User</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-[rgba(70,75,113,0.08)]">
               {filteredEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    No transactions match your search or filter.
+                  <td colSpan={8} className="py-16 text-center">
+                    <div className="flex flex-col items-center justify-center text-[#646981]">
+                      <FileSpreadsheet className="h-8 w-8 text-[#646981]/50 mb-2" />
+                      <p className="font-semibold text-sm text-[#464B71]">No ledger records found</p>
+                      <p className="text-xs text-[#646981] mt-0.5">Transactions appear here automatically when stock movements are completed.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 filteredEntries.map((e) => {
                   const isPositive = e.quantity > 0;
                   return (
-                    <tr key={e.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3.5 px-4 text-slate-400 whitespace-nowrap font-mono text-[11px]">
+                    <tr key={e.id} className="hover:bg-[#F2F2ED]/60 transition">
+                      <td className="py-3 px-4 text-[#646981] whitespace-nowrap font-mono text-[11px]">
                         {new Date(e.createdAt).toLocaleString(undefined, {
                           month: "short",
                           day: "numeric",
@@ -140,49 +144,39 @@ export function LedgerClientView({ entries }: LedgerClientViewProps) {
                           minute: "2-digit",
                         })}
                       </td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
-                            e.movementType === "RECEIPT"
-                              ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                              : e.movementType === "DELIVERY"
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : e.movementType === "ADJUSTMENT"
-                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                              : "bg-violet-500/20 text-violet-300 border border-violet-500/30"
-                          }`}
-                        >
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-[#F2F2ED] text-[#464B71] border border-[rgba(70,75,113,0.10)]">
                           {e.movementType}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-white">{e.product.name}</div>
-                        <div className="text-[10px] font-mono text-slate-400">{e.product.sku}</div>
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-[#464B71]">{e.product.name}</div>
+                        <div className="text-[10px] font-mono text-[#646981]">{e.product.sku}</div>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-300">
-                        {e.location?.name || "Direct Hub"}
+                      <td className="py-3 px-4 text-[#646981]">
+                        {e.location?.name || "Direct Facility"}
                       </td>
-                      <td className="py-3.5 px-4 whitespace-nowrap">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span
                             className={`font-bold font-mono ${
-                              isPositive ? "text-cyan-400" : "text-rose-400"
+                              isPositive ? "text-[#168FB3]" : "text-[#464B71]"
                             }`}
                           >
                             {isPositive ? `+${e.quantity}` : e.quantity} {e.product.uom}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-[#646981] font-mono">
                             ({e.beforeQuantity} → {e.afterQuantity})
                           </span>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-indigo-300 text-[11px]">
+                      <td className="py-3 px-4 font-mono text-[#168FB3] font-semibold text-[11px]">
                         {e.referenceId || "N/A"}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-400 max-w-xs truncate text-[11px]">
-                        {e.reason || "Operational stock movement"}
+                      <td className="py-3 px-4 text-[#646981] max-w-xs truncate text-[11px]">
+                        {e.reason || "Operational movement"}
                       </td>
-                      <td className="py-3.5 px-4 text-right text-slate-300 text-[11px]">
+                      <td className="py-3 px-4 text-right text-[#464B71] font-medium text-[11px]">
                         {e.user.name}
                       </td>
                     </tr>
