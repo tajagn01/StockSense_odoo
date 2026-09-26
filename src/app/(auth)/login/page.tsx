@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { loginAction } from "@/app/actions/authActions";
-import { Boxes, Lock, Mail, ArrowRight, AlertCircle } from "lucide-react";
+import { Boxes, Lock, Mail, ArrowRight, AlertCircle, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -132,34 +132,44 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Demo Seed Accounts Helper */}
+        {/* Quick Auto-Fill Demo Credentials */}
         <div className="mt-6 pt-5 border-t border-[rgba(70,75,113,0.10)]">
-          <p className="text-[11px] font-semibold text-[#464B71] mb-2">Demo Operator Accounts:</p>
-          <div className="space-y-1.5 text-[10px] text-[#646981] bg-[#F2F2ED]/60 p-2.5 rounded-lg border border-[rgba(70,75,113,0.08)]">
-            <div
-              className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]"
+          <p className="text-[11px] font-semibold text-[#464B71] mb-2 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-[#168FB3]" />
+            Quick Demo Login:
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setCredentials("admin@stocksense.io", "StockSense123!")}
+            className="w-full mb-2 flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[#168FB3]/10 hover:bg-[#168FB3]/20 border border-[#168FB3]/30 text-[#168FB3] text-xs font-semibold transition shadow-sm"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Auto-fill Demo Credentials (Admin)
+          </button>
+
+          <div className="grid grid-cols-3 gap-2 text-[10px]">
+            <button
+              type="button"
               onClick={() => setCredentials("admin@stocksense.io", "StockSense123!")}
+              className="py-1.5 px-2 rounded-lg bg-[#F2F2ED]/80 hover:bg-[#168FB3]/10 border border-[rgba(70,75,113,0.12)] text-[#464B71] hover:text-[#168FB3] font-medium transition text-center"
             >
-              <span><strong className="text-[#464B71]">Admin:</strong> admin@stocksense.io</span>
-              <span className="font-mono text-[#168FB3] font-bold">Fill</span>
-            </div>
-            <div
-              className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]"
+              Fill Admin
+            </button>
+            <button
+              type="button"
               onClick={() => setCredentials("manager@stocksense.io", "StockSense123!")}
+              className="py-1.5 px-2 rounded-lg bg-[#F2F2ED]/80 hover:bg-[#168FB3]/10 border border-[rgba(70,75,113,0.12)] text-[#464B71] hover:text-[#168FB3] font-medium transition text-center"
             >
-              <span><strong className="text-[#464B71]">Manager:</strong> manager@stocksense.io</span>
-              <span className="font-mono text-[#168FB3] font-bold">Fill</span>
-            </div>
-            <div
-              className="flex justify-between items-center cursor-pointer hover:text-[#168FB3]"
+              Fill Manager
+            </button>
+            <button
+              type="button"
               onClick={() => setCredentials("staff@stocksense.io", "StockSense123!")}
+              className="py-1.5 px-2 rounded-lg bg-[#F2F2ED]/80 hover:bg-[#168FB3]/10 border border-[rgba(70,75,113,0.12)] text-[#464B71] hover:text-[#168FB3] font-medium transition text-center"
             >
-              <span><strong className="text-[#464B71]">Staff:</strong> staff@stocksense.io</span>
-              <span className="font-mono text-[#168FB3] font-bold">Fill</span>
-            </div>
-            <div className="text-[9px] text-[#646981] pt-1 border-t border-[rgba(70,75,113,0.06)]">
-              Password for all demo accounts: <code className="bg-white px-1 py-0.5 rounded text-[#464B71]">StockSense123!</code>
-            </div>
+              Fill Staff
+            </button>
           </div>
         </div>
 
