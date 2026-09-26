@@ -135,7 +135,7 @@ export function TransfersClientView({
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-[#646981]">
+                      <td suppressHydrationWarning className="py-3 px-4 text-[#646981]">
                         {new Date(t.createdAt).toLocaleDateString()}
                       </td>
                       <td className="py-3 px-4">

@@ -220,7 +220,7 @@ export function DeliveriesClientView({
                           ))}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-[#646981]">
+                      <td suppressHydrationWarning className="py-3 px-4 text-[#646981]">
                         {new Date(delivery.createdAt).toLocaleDateString()}
                       </td>
                       <td className="py-3 px-4">

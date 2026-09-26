@@ -262,7 +262,7 @@ export function ProductDetailClientView({
               ) : (
                 product.ledger.map((entry: any) => (
                   <tr key={entry.id} className="hover:bg-[#F2F2ED]/50 transition">
-                    <td className="py-3 px-4 text-[#646981] whitespace-nowrap font-mono text-[11px]">
+                    <td suppressHydrationWarning className="py-3 px-4 text-[#646981] whitespace-nowrap font-mono text-[11px]">
                       {new Date(entry.createdAt).toLocaleDateString()} {new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap font-mono text-[10px] font-bold">
