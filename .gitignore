@@ -20,7 +20,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Environment local overrides (do not commit actual machine-specific local overrides)
+# Environment files
+.env
+.env*.local
 .env.local
 .env.development.local
 .env.test.local
