@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { UserRole } from "@prisma/client";
 import { signIn, signOut } from "@/auth";
 import { AuthError } from "next-auth";
+import { sendPasswordResetOtp } from "@/lib/email";
 
 export async function loginAction(formData: FormData) {
   try {
@@ -72,10 +73,9 @@ export async function signupAction(formData: FormData) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Security hardening: Public signup always defaults to WAREHOUSE_STAFF.
-    // Privileged roles (ADMIN, INVENTORY_MANAGER) must be provisioned via admin user management or seeded data.
-    const userCount = await prisma.user.count();
-    const assignedRole: UserRole = userCount === 0 ? UserRole.ADMIN : UserRole.WAREHOUSE_STAFF;
+    // Security rule: Public signup ALWAYS assigns WAREHOUSE_STAFF.
+    // Privileged accounts (ADMIN, INVENTORY_MANAGER) must be provisioned via database seed or admin functionality.
+    const assignedRole: UserRole = UserRole.WAREHOUSE_STAFF;
 
     const newUser = await prisma.user.create({
       data: {
@@ -164,14 +164,12 @@ export async function forgotPasswordAction(formData: FormData) {
       },
     });
 
-    // In development only: log the code for testing. Never log in production.
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[STOCKSENSE AUTH DEV ONLY] Password reset OTP for ${email}: ${rawOtp}`);
-    }
+    // Dispatch via email service
+    await sendPasswordResetOtp({ to: email, otp: rawOtp });
 
     return {
       success: true,
-      message: "6-digit OTP has been generated. (In development mode, check console/screen).",
+      message: "If that email is registered, a 6-digit OTP verification code has been dispatched.",
       devOtp: process.env.NODE_ENV !== "production" ? rawOtp : undefined,
       email,
     };

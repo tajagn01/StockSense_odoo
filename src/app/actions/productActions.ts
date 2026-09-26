@@ -8,7 +8,7 @@ import {
   canManageReorderRules,
   assertPermission,
 } from "@/lib/permissions";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function createProductAction(formData: FormData) {
   try {
@@ -111,9 +111,9 @@ export async function createProductAction(formData: FormData) {
       return createdProduct;
     });
 
-    revalidatePath("/products");
-    revalidatePath("/dashboard");
-    revalidatePath("/operations/move-history");
+    safeRevalidatePath("/products");
+    safeRevalidatePath("/dashboard");
+    safeRevalidatePath("/operations/move-history");
 
     return { success: true, productId: product.id };
   } catch (error: any) {
@@ -178,8 +178,8 @@ export async function updateProductAction(productId: string, formData: FormData)
       });
     });
 
-    revalidatePath("/products");
-    revalidatePath(`/products/${productId}`);
+    safeRevalidatePath("/products");
+    safeRevalidatePath(`/products/${productId}`);
     return { success: true };
   } catch (error: any) {
     console.error("Update product failed:", error);
@@ -216,8 +216,8 @@ export async function createCategoryAction(formData: FormData) {
       });
     });
 
-    revalidatePath("/products/categories");
-    revalidatePath("/products");
+    safeRevalidatePath("/products/categories");
+    safeRevalidatePath("/products");
     return { success: true };
   } catch (error: any) {
     console.error("Create category failed:", error);
@@ -256,8 +256,8 @@ export async function deleteCategoryAction(categoryId: string) {
       });
     });
 
-    revalidatePath("/products/categories");
-    revalidatePath("/products");
+    safeRevalidatePath("/products/categories");
+    safeRevalidatePath("/products");
     return { success: true };
   } catch (error: any) {
     console.error("Delete category failed:", error);
@@ -296,8 +296,8 @@ export async function updateReorderRuleAction(formData: FormData) {
       });
     });
 
-    revalidatePath("/products/reordering");
-    revalidatePath("/products");
+    safeRevalidatePath("/products/reordering");
+    safeRevalidatePath("/products");
     return { success: true };
   } catch (error: any) {
     console.error("Update reorder rule failed:", error);

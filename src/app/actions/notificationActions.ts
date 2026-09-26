@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function getUserNotifications() {
   try {
@@ -37,7 +37,7 @@ export async function markNotificationReadAction(notificationId: string) {
       data: { readAt: new Date() },
     });
 
-    revalidatePath("/dashboard");
+    safeRevalidatePath("/dashboard");
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -57,7 +57,7 @@ export async function markAllNotificationsReadAction() {
       data: { readAt: new Date() },
     });
 
-    revalidatePath("/dashboard");
+    safeRevalidatePath("/dashboard");
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };

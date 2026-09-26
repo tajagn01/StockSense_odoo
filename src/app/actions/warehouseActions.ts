@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { canManageWarehouses, assertPermission } from "@/lib/permissions";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function createWarehouseAction(formData: FormData) {
   try {
@@ -47,8 +47,8 @@ export async function createWarehouseAction(formData: FormData) {
       });
     });
 
-    revalidatePath("/settings/warehouses");
-    revalidatePath("/dashboard");
+    safeRevalidatePath("/settings/warehouses");
+    safeRevalidatePath("/dashboard");
     return { success: true };
   } catch (error: any) {
     console.error("Create warehouse failed:", error);
@@ -82,7 +82,7 @@ export async function updateWarehouseAction(warehouseId: string, formData: FormD
       });
     });
 
-    revalidatePath("/settings/warehouses");
+    safeRevalidatePath("/settings/warehouses");
     return { success: true };
   } catch (error: any) {
     console.error("Update warehouse failed:", error);
@@ -111,7 +111,7 @@ export async function toggleWarehouseStatusAction(warehouseId: string, isActive:
       });
     });
 
-    revalidatePath("/settings/warehouses");
+    safeRevalidatePath("/settings/warehouses");
     return { success: true };
   } catch (error: any) {
     console.error("Toggle warehouse status failed:", error);
@@ -166,8 +166,8 @@ export async function createLocationAction(formData: FormData) {
       });
     });
 
-    revalidatePath("/settings/warehouses");
-    revalidatePath("/products");
+    safeRevalidatePath("/settings/warehouses");
+    safeRevalidatePath("/products");
     return { success: true };
   } catch (error: any) {
     console.error("Create location failed:", error);

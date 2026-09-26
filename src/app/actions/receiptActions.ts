@@ -4,30 +4,36 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { canCreateReceipt, canValidateReceipt, assertPermission } from "@/lib/permissions";
 import { generateDocumentNumber } from "@/lib/documentNumber";
+import { incrementInventoryAtomic } from "@/lib/inventory";
 import { notifyManagersAndAdmin } from "@/lib/notifications";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function createReceiptAction(formData: FormData) {
   try {
     const user = await requireAuth();
     assertPermission(user.role, canCreateReceipt, "create receipt orders");
 
-    const supplierId = formData.get("supplierId") as string;
-    const warehouseId = formData.get("warehouseId") as string;
-    const locationId = formData.get("locationId") as string;
-    const productId = formData.get("productId") as string;
-    const quantityRaw = parseInt((formData.get("quantity") as string) || "0", 10);
+    const supplierId = (formData.get("supplierId") as string)?.trim();
+    const warehouseId = (formData.get("warehouseId") as string)?.trim();
+    const locationId = (formData.get("locationId") as string)?.trim();
+    const productId = (formData.get("productId") as string)?.trim();
+    const quantityStr = (formData.get("quantity") as string)?.trim();
     const notes = (formData.get("notes") as string)?.trim() || null;
 
     if (!supplierId || !warehouseId || !locationId || !productId) {
       return { success: false, error: "Supplier, warehouse, location, and product are required." };
     }
 
-    if (isNaN(quantityRaw) || quantityRaw <= 0) {
-      return { success: false, error: "Receipt quantity must be a positive integer greater than zero." };
+    // Strict integer validation: reject floats, strings like '10abc', negatives, zero
+    if (!quantityStr || !/^\d+$/.test(quantityStr)) {
+      return { success: false, error: "Receipt quantity must be a strictly positive whole integer." };
+    }
+    const quantity = parseInt(quantityStr, 10);
+    if (quantity <= 0 || !Number.isSafeInteger(quantity)) {
+      return { success: false, error: "Receipt quantity must be greater than zero." };
     }
 
-    // Validate resource relationships and existence
+    // Validate relationships and existence
     const [supplier, warehouse, location, product] = await Promise.all([
       prisma.supplier.findUnique({ where: { id: supplierId } }),
       prisma.warehouse.findUnique({ where: { id: warehouseId } }),
@@ -58,15 +64,15 @@ export async function createReceiptAction(formData: FormData) {
             {
               productId,
               locationId,
-              quantity: quantityRaw,
+              quantity,
             },
           ],
         },
       },
     });
 
-    revalidatePath("/operations/receipts");
-    revalidatePath("/dashboard");
+    safeRevalidatePath("/operations/receipts");
+    safeRevalidatePath("/dashboard");
     return { success: true, receiptNo };
   } catch (error: any) {
     console.error("Create receipt failed:", error);
@@ -93,7 +99,7 @@ export async function validateReceiptAction(receiptId: string) {
 
       if (!receipt) throw new Error("Receipt document not found.");
 
-      // 2. Concurrency-safe atomic state check & transition: prevent double validation
+      // 2. Concurrency-safe atomic state transition: prevent double validation
       const updatedReceipt = await tx.receipt.updateMany({
         where: {
           id: receiptId,
@@ -106,40 +112,16 @@ export async function validateReceiptAction(receiptId: string) {
         throw new Error("Receipt has already been validated or is not in a valid state for processing.");
       }
 
-      // 3. For each item, atomically update inventory and append to ledger
+      // 3. For each item, atomically update inventory using PostgreSQL RETURNING and record exact ledger
       for (const item of receipt.items) {
-        const existingInv = await tx.inventory.findUnique({
-          where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: item.locationId,
-            },
-          },
+        const mutation = await incrementInventoryAtomic(tx, {
+          productId: item.productId,
+          warehouseId: receipt.warehouseId,
+          locationId: item.locationId,
+          quantity: item.quantity,
         });
 
-        const beforeQty = existingInv ? existingInv.quantity : 0;
-        const afterQty = beforeQty + item.quantity;
-
-        // Atomic upsert with increment
-        await tx.inventory.upsert({
-          where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: item.locationId,
-            },
-          },
-          update: {
-            quantity: { increment: item.quantity },
-          },
-          create: {
-            productId: item.productId,
-            locationId: item.locationId,
-            warehouseId: receipt.warehouseId,
-            quantity: item.quantity,
-          },
-        });
-
-        // Immutable StockLedger entry
+        // Immutable StockLedger entry with exact mutation values
         await tx.stockLedger.create({
           data: {
             productId: item.productId,
@@ -147,8 +129,8 @@ export async function validateReceiptAction(receiptId: string) {
             locationId: item.locationId,
             movementType: "RECEIPT",
             quantity: item.quantity,
-            beforeQuantity: beforeQty,
-            afterQuantity: afterQty,
+            beforeQuantity: mutation.beforeQuantity,
+            afterQuantity: mutation.afterQuantity,
             referenceType: "RECEIPT",
             referenceId: receipt.receiptNo,
             reason: `Inward receipt validation from supplier (${receipt.receiptNo})`,
@@ -169,7 +151,7 @@ export async function validateReceiptAction(receiptId: string) {
       });
 
       return receipt;
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     await notifyManagersAndAdmin({
       title: "Inward Receipt Validated",
@@ -177,10 +159,10 @@ export async function validateReceiptAction(receiptId: string) {
       type: "RECEIPT_VALIDATED",
     });
 
-    revalidatePath("/operations/receipts");
-    revalidatePath("/products");
-    revalidatePath("/dashboard");
-    revalidatePath("/operations/move-history");
+    safeRevalidatePath("/operations/receipts");
+    safeRevalidatePath("/products");
+    safeRevalidatePath("/dashboard");
+    safeRevalidatePath("/operations/move-history");
 
     return { success: true };
   } catch (error: any) {

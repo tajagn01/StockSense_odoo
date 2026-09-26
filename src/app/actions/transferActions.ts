@@ -4,26 +4,31 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { canCreateTransfer, canValidateTransfer, assertPermission } from "@/lib/permissions";
 import { generateDocumentNumber } from "@/lib/documentNumber";
+import { incrementInventoryAtomic, decrementInventoryAtomic } from "@/lib/inventory";
 import { notifyManagersAndAdmin } from "@/lib/notifications";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function createTransferAction(formData: FormData) {
   try {
     const user = await requireAuth();
     assertPermission(user.role, canCreateTransfer, "create internal stock transfers");
 
-    const sourceLocationId = formData.get("sourceLocationId") as string;
-    const destinationLocationId = formData.get("destinationLocationId") as string;
-    const productId = formData.get("productId") as string;
-    const quantityRaw = parseInt((formData.get("quantity") as string) || "0", 10);
+    const sourceLocationId = (formData.get("sourceLocationId") as string)?.trim();
+    const destinationLocationId = (formData.get("destinationLocationId") as string)?.trim();
+    const productId = (formData.get("productId") as string)?.trim();
+    const quantityStr = (formData.get("quantity") as string)?.trim();
     const notes = (formData.get("notes") as string)?.trim() || null;
 
     if (!sourceLocationId || !destinationLocationId || !productId) {
       return { success: false, error: "Source location, destination location, and product are required." };
     }
 
-    if (isNaN(quantityRaw) || quantityRaw <= 0) {
-      return { success: false, error: "Transfer quantity must be a positive integer greater than zero." };
+    if (!quantityStr || !/^\d+$/.test(quantityStr)) {
+      return { success: false, error: "Transfer quantity must be a strictly positive whole integer." };
+    }
+    const quantity = parseInt(quantityStr, 10);
+    if (quantity <= 0 || !Number.isSafeInteger(quantity)) {
+      return { success: false, error: "Transfer quantity must be greater than zero." };
     }
 
     if (sourceLocationId === destinationLocationId) {
@@ -63,15 +68,15 @@ export async function createTransferAction(formData: FormData) {
           create: [
             {
               productId,
-              quantity: quantityRaw,
+              quantity,
             },
           ],
         },
       },
     });
 
-    revalidatePath("/operations/transfers");
-    revalidatePath("/dashboard");
+    safeRevalidatePath("/operations/transfers");
+    safeRevalidatePath("/dashboard");
     return { success: true, transferNo };
   } catch (error: any) {
     console.error("Create transfer failed:", error);
@@ -94,7 +99,7 @@ export async function validateTransferAction(transferId: string) {
 
       if (!transfer) throw new Error("Transfer order not found.");
 
-      // 1. Concurrency-safe atomic state check & transition: prevent double transfer
+      // 1. Concurrency-safe atomic state transition: prevent double transfer
       const updatedTransfer = await tx.transfer.updateMany({
         where: { id: transferId, status: "READY" },
         data: { status: "DONE" },
@@ -105,73 +110,20 @@ export async function validateTransferAction(transferId: string) {
       }
 
       for (const item of transfer.items) {
-        // 2. Atomic conditional decrement at source: prevents race condition / negative stock
-        const srcUpdate = await tx.inventory.updateMany({
-          where: {
-            productId: item.productId,
-            locationId: transfer.sourceLocationId,
-            quantity: { gte: item.quantity },
-          },
-          data: {
-            quantity: { decrement: item.quantity },
-          },
+        // 2. Atomic conditional decrement at source: prevents race conditions and negative inventory
+        const srcMutation = await decrementInventoryAtomic(tx, {
+          productId: item.productId,
+          locationId: transfer.sourceLocationId,
+          quantity: item.quantity,
+          productName: item.product.name,
         });
 
-        if (srcUpdate.count === 0) {
-          const srcInv = await tx.inventory.findUnique({
-            where: {
-              productId_locationId: {
-                productId: item.productId,
-                locationId: transfer.sourceLocationId,
-              },
-            },
-          });
-          const available = srcInv ? srcInv.quantity : 0;
-          throw new Error(
-            `Insufficient stock at source location for '${item.product.name}'. Required: ${item.quantity}, Available: ${available}.`
-          );
-        }
-
-        // Fetch post-decrement source quantity for ledger entry
-        const updatedSrcInv = await tx.inventory.findUnique({
-          where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: transfer.sourceLocationId,
-            },
-          },
-        });
-        const srcAfter = updatedSrcInv ? updatedSrcInv.quantity : 0;
-        const srcBefore = srcAfter + item.quantity;
-
-        // 3. Atomic increment at destination location
-        const destInvBefore = await tx.inventory.findUnique({
-          where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: transfer.destinationLocationId,
-            },
-          },
-        });
-        const destBefore = destInvBefore ? destInvBefore.quantity : 0;
-        const destAfter = destBefore + item.quantity;
-
-        await tx.inventory.upsert({
-          where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: transfer.destinationLocationId,
-            },
-          },
-          update: {
-            quantity: { increment: item.quantity },
-          },
-          create: {
-            productId: item.productId,
-            locationId: transfer.destinationLocationId,
-            warehouseId: transfer.destinationWarehouseId,
-            quantity: item.quantity,
-          },
+        // 3. Atomic increment at destination location with exact returned state
+        const destMutation = await incrementInventoryAtomic(tx, {
+          productId: item.productId,
+          warehouseId: transfer.destinationWarehouseId,
+          locationId: transfer.destinationLocationId,
+          quantity: item.quantity,
         });
 
         // 4. Record dual StockLedger entries (source decrement + destination increment)
@@ -182,8 +134,8 @@ export async function validateTransferAction(transferId: string) {
             locationId: transfer.sourceLocationId,
             movementType: "TRANSFER_OUT",
             quantity: -item.quantity,
-            beforeQuantity: srcBefore,
-            afterQuantity: srcAfter,
+            beforeQuantity: srcMutation.beforeQuantity,
+            afterQuantity: srcMutation.afterQuantity,
             referenceType: "TRANSFER",
             referenceId: transfer.transferNo,
             reason: `Transfer outward to ${transfer.destinationLocationId} (${transfer.transferNo})`,
@@ -198,8 +150,8 @@ export async function validateTransferAction(transferId: string) {
             locationId: transfer.destinationLocationId,
             movementType: "TRANSFER_IN",
             quantity: item.quantity,
-            beforeQuantity: destBefore,
-            afterQuantity: destAfter,
+            beforeQuantity: destMutation.beforeQuantity,
+            afterQuantity: destMutation.afterQuantity,
             referenceType: "TRANSFER",
             referenceId: transfer.transferNo,
             reason: `Transfer inward from ${transfer.sourceLocationId} (${transfer.transferNo})`,
@@ -225,7 +177,7 @@ export async function validateTransferAction(transferId: string) {
       });
 
       return transfer;
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     await notifyManagersAndAdmin({
       title: "Stock Transfer Completed",
@@ -233,10 +185,10 @@ export async function validateTransferAction(transferId: string) {
       type: "TRANSFER_COMPLETED",
     });
 
-    revalidatePath("/operations/transfers");
-    revalidatePath("/products");
-    revalidatePath("/dashboard");
-    revalidatePath("/operations/move-history");
+    safeRevalidatePath("/operations/transfers");
+    safeRevalidatePath("/products");
+    safeRevalidatePath("/dashboard");
+    safeRevalidatePath("/operations/move-history");
 
     return { success: true };
   } catch (error: any) {

@@ -5,17 +5,18 @@ import { AdjustmentReason } from "@prisma/client";
 import { requireAuth } from "@/lib/auth";
 import { canAdjustStock, assertPermission } from "@/lib/permissions";
 import { generateDocumentNumber } from "@/lib/documentNumber";
+import { reconcileInventoryWithLock } from "@/lib/inventory";
 import { notifyManagersAndAdmin } from "@/lib/notifications";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function createAdjustmentAction(formData: FormData) {
   try {
     const user = await requireAuth();
     assertPermission(user.role, canAdjustStock, "perform inventory adjustments");
 
-    const productId = formData.get("productId") as string;
-    const locationId = formData.get("locationId") as string;
-    const physicalQuantityRaw = parseInt((formData.get("physicalQuantity") as string) || "0", 10);
+    const productId = (formData.get("productId") as string)?.trim();
+    const locationId = (formData.get("locationId") as string)?.trim();
+    const physicalQuantityStr = (formData.get("physicalQuantity") as string)?.trim();
     const reason = (formData.get("reason") as AdjustmentReason) || AdjustmentReason.COUNTING_ERROR;
     const notes = (formData.get("notes") as string)?.trim() || null;
 
@@ -23,8 +24,13 @@ export async function createAdjustmentAction(formData: FormData) {
       return { success: false, error: "Please specify product and warehouse location." };
     }
 
-    if (isNaN(physicalQuantityRaw) || physicalQuantityRaw < 0) {
-      return { success: false, error: "Physical counted quantity must be a non-negative integer (>= 0)." };
+    // Strict non-negative integer validation
+    if (!physicalQuantityStr || !/^\d+$/.test(physicalQuantityStr)) {
+      return { success: false, error: "Physical counted quantity must be a non-negative whole integer (>= 0)." };
+    }
+    const physicalQuantity = parseInt(physicalQuantityStr, 10);
+    if (physicalQuantity < 0 || !Number.isSafeInteger(physicalQuantity)) {
+      return { success: false, error: "Physical counted quantity must be greater than or equal to zero." };
     }
 
     // Verify existence and validity of resources
@@ -43,36 +49,14 @@ export async function createAdjustmentAction(formData: FormData) {
 
     const adjustmentNo = await generateDocumentNumber("ADJ");
 
-    // Atomic reconciliation transaction: inventory count, adjustment record, immutable ledger, and audit
+    // Atomic reconciliation transaction protected by PostgreSQL row-level lock (FOR UPDATE)
     await prisma.$transaction(async (tx) => {
-      // Find current inventory snapshot within transaction
-      const existingInv = await tx.inventory.findUnique({
-        where: {
-          productId_locationId: {
-            productId,
-            locationId,
-          },
-        },
-      });
-
-      const systemQuantity = existingInv ? existingInv.quantity : 0;
-      const difference = physicalQuantityRaw - systemQuantity;
-
-      // Update inventory table to match physical count
-      await tx.inventory.upsert({
-        where: {
-          productId_locationId: {
-            productId,
-            locationId,
-          },
-        },
-        update: { quantity: physicalQuantityRaw },
-        create: {
-          productId,
-          locationId,
-          warehouseId: location.warehouseId,
-          quantity: physicalQuantityRaw,
-        },
+      // Reconciles inventory under exclusive row lock, preventing race conditions with concurrent movements
+      const reconciliation = await reconcileInventoryWithLock(tx, {
+        productId,
+        warehouseId: location.warehouseId,
+        locationId,
+        physicalQuantity,
       });
 
       // Create StockAdjustment record
@@ -82,9 +66,9 @@ export async function createAdjustmentAction(formData: FormData) {
           productId,
           warehouseId: location.warehouseId,
           locationId,
-          systemQuantity,
-          physicalQuantity: physicalQuantityRaw,
-          difference,
+          systemQuantity: reconciliation.systemQuantity,
+          physicalQuantity: reconciliation.physicalQuantity,
+          difference: reconciliation.difference,
           reason,
           notes,
           createdById: user.id,
@@ -98,9 +82,9 @@ export async function createAdjustmentAction(formData: FormData) {
           warehouseId: location.warehouseId,
           locationId,
           movementType: "ADJUSTMENT",
-          quantity: difference,
-          beforeQuantity: systemQuantity,
-          afterQuantity: physicalQuantityRaw,
+          quantity: reconciliation.difference,
+          beforeQuantity: reconciliation.beforeQuantity,
+          afterQuantity: reconciliation.afterQuantity,
           referenceType: "ADJUSTMENT",
           referenceId: adjustmentNo,
           reason: `Physical count reconciliation [${reason}]: ${notes || "Cycle count update"}`,
@@ -115,10 +99,15 @@ export async function createAdjustmentAction(formData: FormData) {
           action: "STOCK_ADJUSTMENT",
           entity: "StockAdjustment",
           entityId: adjustmentNo,
-          metadata: { systemQuantity, physicalQuantity: physicalQuantityRaw, difference, reason },
+          metadata: {
+            systemQuantity: reconciliation.systemQuantity,
+            physicalQuantity: reconciliation.physicalQuantity,
+            difference: reconciliation.difference,
+            reason,
+          },
         },
       });
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     await notifyManagersAndAdmin({
       title: "Stock Adjustment Reconciled",
@@ -126,10 +115,10 @@ export async function createAdjustmentAction(formData: FormData) {
       type: "STOCK_ADJUSTED",
     });
 
-    revalidatePath("/operations/adjustments");
-    revalidatePath("/products");
-    revalidatePath("/dashboard");
-    revalidatePath("/operations/move-history");
+    safeRevalidatePath("/operations/adjustments");
+    safeRevalidatePath("/products");
+    safeRevalidatePath("/dashboard");
+    safeRevalidatePath("/operations/move-history");
 
     return { success: true, adjustmentNo };
   } catch (error: any) {

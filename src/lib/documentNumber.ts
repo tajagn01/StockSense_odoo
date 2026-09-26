@@ -4,7 +4,8 @@ export type DocPrefix = "REC" | "DEL" | "TRF" | "ADJ";
 
 /**
  * Concurrency-safe sequence reservation helper.
- * Uses atomic sequence table increments with PostgreSQL row locks to guarantee unique sequential numbers.
+ * Uses PostgreSQL atomic UPSERT (INSERT ... ON CONFLICT DO UPDATE) to guarantee
+ * unique sequential numbers under high concurrency without transaction aborts.
  */
 async function reserveSequence(db: any, prefix: DocPrefix, year: number): Promise<number> {
   const existingSeq = await db.documentSequence.findUnique({
@@ -14,10 +15,13 @@ async function reserveSequence(db: any, prefix: DocPrefix, year: number): Promis
         year,
       },
     },
+    select: { nextNumber: true },
   });
 
+  let initialNextNumber = 2; // Default if no existing documents: allocates 1, next is 2
+
   if (!existingSeq) {
-    // Find current maximum document number from existing records to avoid collisions with seeded or existing data
+    // Find current maximum document number from existing records to avoid collisions with prior data
     const searchPrefix = `${prefix}-${year}-`;
     let currentMax = 0;
 
@@ -63,31 +67,23 @@ async function reserveSequence(db: any, prefix: DocPrefix, year: number): Promis
       }
     }
 
-    const startNumber = currentMax + 1;
-
-    try {
-      await db.documentSequence.create({
-        data: {
-          prefix,
-          year,
-          nextNumber: startNumber + 1,
-        },
-      });
-      return startNumber;
-    } catch {
-      // If a concurrent request created the record at the same instant, continue to atomic update
-    }
+    initialNextNumber = currentMax + 2; // Allocates currentMax + 1, next will be currentMax + 2
   }
 
-  // Atomic update: increment sequence counter and return updated state
-  const updated = await db.documentSequence.update({
+  // Atomic UPSERT: Single native statement with ON CONFLICT DO UPDATE
+  const seqRecord = await db.documentSequence.upsert({
     where: {
       prefix_year: {
         prefix,
         year,
       },
     },
-    data: {
+    create: {
+      prefix,
+      year,
+      nextNumber: initialNextNumber,
+    },
+    update: {
       nextNumber: {
         increment: 1,
       },
@@ -97,7 +93,7 @@ async function reserveSequence(db: any, prefix: DocPrefix, year: number): Promis
     },
   });
 
-  return updated.nextNumber - 1;
+  return seqRecord.nextNumber - 1;
 }
 
 /**
@@ -114,14 +110,6 @@ export async function generateDocumentNumber(
   const db = tx || prisma;
   const year = new Date().getFullYear();
 
-  let allocatedSeq: number;
-  if (tx) {
-    allocatedSeq = await reserveSequence(db, prefix, year);
-  } else {
-    allocatedSeq = await prisma.$transaction(async (innerTx) => {
-      return await reserveSequence(innerTx, prefix, year);
-    });
-  }
-
+  const allocatedSeq = await reserveSequence(db, prefix, year);
   return `${prefix}-${year}-${String(allocatedSeq).padStart(4, "0")}`;
 }

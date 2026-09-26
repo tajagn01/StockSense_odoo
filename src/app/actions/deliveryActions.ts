@@ -10,27 +10,32 @@ import {
   assertPermission,
 } from "@/lib/permissions";
 import { generateDocumentNumber } from "@/lib/documentNumber";
+import { decrementInventoryAtomic } from "@/lib/inventory";
 import { notifyManagersAndAdmin } from "@/lib/notifications";
-import { revalidatePath } from "next/cache";
+import { safeRevalidatePath } from "@/lib/serverUtils";
 
 export async function createDeliveryAction(formData: FormData) {
   try {
     const user = await requireAuth();
     assertPermission(user.role, canCreateDelivery, "create delivery orders");
 
-    const customerId = formData.get("customerId") as string;
-    const warehouseId = formData.get("warehouseId") as string;
-    const locationId = formData.get("locationId") as string;
-    const productId = formData.get("productId") as string;
-    const quantityRaw = parseInt((formData.get("quantity") as string) || "0", 10);
+    const customerId = (formData.get("customerId") as string)?.trim();
+    const warehouseId = (formData.get("warehouseId") as string)?.trim();
+    const locationId = (formData.get("locationId") as string)?.trim();
+    const productId = (formData.get("productId") as string)?.trim();
+    const quantityStr = (formData.get("quantity") as string)?.trim();
     const notes = (formData.get("notes") as string)?.trim() || null;
 
     if (!customerId || !warehouseId || !locationId || !productId) {
       return { success: false, error: "Customer, warehouse, location, and product are required." };
     }
 
-    if (isNaN(quantityRaw) || quantityRaw <= 0) {
-      return { success: false, error: "Delivery quantity must be a positive integer greater than zero." };
+    if (!quantityStr || !/^\d+$/.test(quantityStr)) {
+      return { success: false, error: "Delivery quantity must be a strictly positive whole integer." };
+    }
+    const quantity = parseInt(quantityStr, 10);
+    if (quantity <= 0 || !Number.isSafeInteger(quantity)) {
+      return { success: false, error: "Delivery quantity must be greater than zero." };
     }
 
     // Validate relationships and existence
@@ -64,7 +69,7 @@ export async function createDeliveryAction(formData: FormData) {
             {
               productId,
               locationId,
-              quantity: quantityRaw,
+              quantity,
               pickedQuantity: 0,
               packedQuantity: 0,
             },
@@ -73,8 +78,8 @@ export async function createDeliveryAction(formData: FormData) {
       },
     });
 
-    revalidatePath("/operations/deliveries");
-    revalidatePath("/dashboard");
+    safeRevalidatePath("/operations/deliveries");
+    safeRevalidatePath("/dashboard");
     return { success: true, deliveryNo };
   } catch (error: any) {
     console.error("Create delivery failed:", error);
@@ -124,7 +129,7 @@ export async function startPickingDeliveryAction(deliveryId: string) {
       return delivery;
     });
 
-    revalidatePath("/operations/deliveries");
+    safeRevalidatePath("/operations/deliveries");
     return { success: true };
   } catch (error: any) {
     console.error("Start picking failed:", error);
@@ -171,7 +176,7 @@ export async function markDeliveryPickedAction(deliveryId: string) {
       });
     });
 
-    revalidatePath("/operations/deliveries");
+    safeRevalidatePath("/operations/deliveries");
     return { success: true };
   } catch (error: any) {
     console.error("Mark delivery picked failed:", error);
@@ -235,7 +240,7 @@ export async function packDeliveryAction(deliveryId: string) {
       });
     });
 
-    revalidatePath("/operations/deliveries");
+    safeRevalidatePath("/operations/deliveries");
     return { success: true };
   } catch (error: any) {
     console.error("Pack delivery failed:", error);
@@ -245,7 +250,7 @@ export async function packDeliveryAction(deliveryId: string) {
 
 /**
  * Step 4: Validate & Ship delivery (PACKED -> DONE)
- * Guaranteed concurrency-safe conditional inventory decrement preventing negative stock.
+ * Guaranteed atomic conditional inventory decrement preventing negative stock and race conditions.
  */
 export async function validateDeliveryAction(deliveryId: string) {
   try {
@@ -253,6 +258,8 @@ export async function validateDeliveryAction(deliveryId: string) {
     assertPermission(user.role, canValidateDelivery, "validate and dispatch delivery shipments");
 
     if (!deliveryId) return { success: false, error: "Delivery ID is required." };
+
+    const alertsToSend: Array<{ title: string; message: string; type: string }> = [];
 
     // Execute atomic transaction: validation, stock check, decrement, ledger log
     const result = await prisma.$transaction(async (tx) => {
@@ -289,47 +296,16 @@ export async function validateDeliveryAction(deliveryId: string) {
           );
         }
 
-        // Database-level atomic conditional decrement: guarantees stock never drops below zero
-        const updateResult = await tx.inventory.updateMany({
-          where: {
-            productId: item.productId,
-            locationId: item.locationId,
-            quantity: { gte: item.quantity },
-          },
-          data: {
-            quantity: { decrement: item.quantity },
-          },
+        // Atomic PostgreSQL conditional decrement with RETURNING
+        const mutation = await decrementInventoryAtomic(tx, {
+          productId: item.productId,
+          locationId: item.locationId,
+          quantity: item.quantity,
+          productName: item.product.name,
+          uom: item.product.uom,
         });
 
-        if (updateResult.count === 0) {
-          const currentInv = await tx.inventory.findUnique({
-            where: {
-              productId_locationId: {
-                productId: item.productId,
-                locationId: item.locationId,
-              },
-            },
-          });
-          const available = currentInv ? currentInv.quantity : 0;
-          throw new Error(
-            `Insufficient stock for '${item.product.name}'. Required: ${item.quantity} ${item.product.uom}, Available: ${available} ${item.product.uom}. Operation aborted.`
-          );
-        }
-
-        // Fetch post-update quantity to maintain ledger precision
-        const updatedInv = await tx.inventory.findUnique({
-          where: {
-            productId_locationId: {
-              productId: item.productId,
-              locationId: item.locationId,
-            },
-          },
-        });
-
-        const afterQty = updatedInv ? updatedInv.quantity : 0;
-        const beforeQty = afterQty + item.quantity;
-
-        // Immutable StockLedger entry
+        // Immutable StockLedger entry with exact returned quantities
         await tx.stockLedger.create({
           data: {
             productId: item.productId,
@@ -337,8 +313,8 @@ export async function validateDeliveryAction(deliveryId: string) {
             locationId: item.locationId,
             movementType: "DELIVERY",
             quantity: -item.quantity,
-            beforeQuantity: beforeQty,
-            afterQuantity: afterQty,
+            beforeQuantity: mutation.beforeQuantity,
+            afterQuantity: mutation.afterQuantity,
             referenceType: "DELIVERY",
             referenceId: delivery.deliveryNo,
             reason: `Outward delivery validation to customer (${delivery.deliveryNo})`,
@@ -346,27 +322,21 @@ export async function validateDeliveryAction(deliveryId: string) {
           },
         });
 
-        // Deduplicated threshold alerting for low stock / out of stock
+        // Threshold boundary alerting for managers/admin
         const reorderLevel = item.product.reorderRules[0]?.reorderLevel ?? 20;
-        if (beforeQty > 0 && afterQty === 0) {
-          // Triggered only when stock drops to 0
-          await tx.notification.create({
-            data: {
-              userId: user.id,
-              title: "Out of Stock Alert",
-              message: `Product '${item.product.name}' (${item.product.sku}) is now OUT OF STOCK following delivery ${delivery.deliveryNo}.`,
-              type: "OUT_OF_STOCK",
-            },
+        if (mutation.beforeQuantity > 0 && mutation.afterQuantity === 0) {
+          // Crosses into OUT_OF_STOCK
+          alertsToSend.push({
+            title: "Out of Stock Alert",
+            message: `Product '${item.product.name}' (${item.product.sku}) is now OUT OF STOCK following delivery ${delivery.deliveryNo}.`,
+            type: "OUT_OF_STOCK",
           });
-        } else if (beforeQty > reorderLevel && afterQty <= reorderLevel) {
-          // Triggered only when crossing into low stock
-          await tx.notification.create({
-            data: {
-              userId: user.id,
-              title: "Low Stock Alert",
-              message: `Product '${item.product.name}' (${item.product.sku}) is below reorder level (${afterQty}/${reorderLevel}).`,
-              type: "LOW_STOCK",
-            },
+        } else if (mutation.beforeQuantity > reorderLevel && mutation.afterQuantity <= reorderLevel && mutation.afterQuantity > 0) {
+          // Crosses into LOW_STOCK
+          alertsToSend.push({
+            title: "Low Stock Alert",
+            message: `Product '${item.product.name}' (${item.product.sku}) is below reorder level (${mutation.afterQuantity}/${reorderLevel}).`,
+            type: "LOW_STOCK",
           });
         }
       }
@@ -383,7 +353,11 @@ export async function validateDeliveryAction(deliveryId: string) {
       });
 
       return delivery;
-    });
+    }, { maxWait: 15000, timeout: 30000 });
+
+    for (const alert of alertsToSend) {
+      await notifyManagersAndAdmin(alert);
+    }
 
     await notifyManagersAndAdmin({
       title: "Delivery Order Dispatched",
@@ -391,10 +365,10 @@ export async function validateDeliveryAction(deliveryId: string) {
       type: "DELIVERY_COMPLETED",
     });
 
-    revalidatePath("/operations/deliveries");
-    revalidatePath("/products");
-    revalidatePath("/dashboard");
-    revalidatePath("/operations/move-history");
+    safeRevalidatePath("/operations/deliveries");
+    safeRevalidatePath("/products");
+    safeRevalidatePath("/dashboard");
+    safeRevalidatePath("/operations/move-history");
 
     return { success: true };
   } catch (error: any) {

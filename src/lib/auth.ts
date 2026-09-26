@@ -9,10 +9,20 @@ export interface SessionUser {
   role: UserRole;
 }
 
+let mockUserForTest: SessionUser | null = null;
+
+export function setMockUserForTest(user: SessionUser | null) {
+  mockUserForTest = user;
+}
+
 /**
  * Retrieves the currently authenticated session user.
  */
 export async function getCurrentUser(): Promise<SessionUser | null> {
+  if (process.env.NODE_ENV === "test" && mockUserForTest) {
+    return mockUserForTest;
+  }
+
   try {
     const session = await auth();
     if (!session || !session.user || !session.user.id) {
